@@ -44,7 +44,7 @@ function init!(invariant::AllDifferentInvariant, messages::DAGMessagesVector{Sin
     return FloatFullMessage(violation)
 end
 
-function eval(invariant::AllDifferentInvariant, messages::DAGMessagesVector{SingleVariableMessage{IntDecisionValue}})
+function evaluate(invariant::AllDifferentInvariant, messages::DAGMessagesVector{SingleVariableMessage{IntDecisionValue}})
     values = Set{Int}()
     for m in messages
         union!(values, m.value.value)
@@ -52,7 +52,7 @@ function eval(invariant::AllDifferentInvariant, messages::DAGMessagesVector{Sing
     return FloatFullMessage(n_variables(invariant) - length(values))
 end
 
-function eval(invariant::AllDifferentInvariant, deltas::DAGMessagesVector{SingleVariableMoveDelta{IntDecisionValue}})
+function evaluate(invariant::AllDifferentInvariant, deltas::DAGMessagesVector{SingleVariableMoveDelta{IntDecisionValue}})
     new_counter = copy(invariant.current_value_counter)
     impacted_values = Set{Int}()
     for δ in deltas
@@ -94,18 +94,18 @@ end
     end
 end
 
-@testitem "eval(::AllDifferentInvariant, ::FullMessage)" begin
+@testitem "evaluate(::AllDifferentInvariant, ::FullMessage)" begin
     n = 10
     invariant = JuLS.AllDifferentInvariant(n)
 
     messages = JuLS.DAGMessagesVector([JuLS.SingleVariableMessage(i, i) for i = 1:n])
-    @test JuLS.eval(invariant, messages) == JuLS.FloatFullMessage(0)
+    @test JuLS.evaluate(invariant, messages) == JuLS.FloatFullMessage(0)
 
     messages = JuLS.DAGMessagesVector([JuLS.SingleVariableMessage(i, 1) for i = 1:n])
-    @test JuLS.eval(invariant, messages) == JuLS.FloatFullMessage(9)
+    @test JuLS.evaluate(invariant, messages) == JuLS.FloatFullMessage(9)
 end
 
-@testitem "eval(::AllDifferentInvariant, ::Delta)" begin
+@testitem "evaluate(::AllDifferentInvariant, ::Delta)" begin
     n = 10
     invariant = JuLS.AllDifferentInvariant(n)
 
@@ -119,11 +119,11 @@ end
         JuLS.SingleVariableMoveDelta(7, 7, 1),
     ])
 
-    @test JuLS.eval(invariant, deltas1) == JuLS.FloatDelta(0)
+    @test JuLS.evaluate(invariant, deltas1) == JuLS.FloatDelta(0)
 
     deltas2 = JuLS.DAGMessagesVector([JuLS.SingleVariableMoveDelta(1, 1, 4), JuLS.SingleVariableMoveDelta(3, 3, 7)])
 
-    @test JuLS.eval(invariant, deltas2) == JuLS.FloatDelta(2)
+    @test JuLS.evaluate(invariant, deltas2) == JuLS.FloatDelta(2)
 
     # Starting from an infeasible state
     messages = JuLS.DAGMessagesVector([JuLS.SingleVariableMessage(i, 1) for i = 1:n])
@@ -131,7 +131,7 @@ end
 
     deltas3 = JuLS.DAGMessagesVector([JuLS.SingleVariableMoveDelta(i, 1, i) for i = 2:n])
 
-    @test JuLS.eval(invariant, deltas3) == JuLS.FloatDelta(-9)
+    @test JuLS.evaluate(invariant, deltas3) == JuLS.FloatDelta(-9)
 
     deltas4 = JuLS.DAGMessagesVector([
         JuLS.SingleVariableMoveDelta(1, 1, 4),
@@ -139,7 +139,7 @@ end
         JuLS.SingleVariableMoveDelta(5, 1, 7),
         JuLS.SingleVariableMoveDelta(8, 1, 2),
     ])
-    @test JuLS.eval(invariant, deltas4) == JuLS.FloatDelta(-3)
+    @test JuLS.evaluate(invariant, deltas4) == JuLS.FloatDelta(-3)
 end
 
 @testitem "commit!(::AllDifferentInvariant)" begin

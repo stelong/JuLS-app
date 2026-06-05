@@ -18,6 +18,6 @@ function InitRun(input::DecisionVariablesArray, dag::DAG)
     return InitRun(input, istouched, messages)
 end
 
-eval(r::InitRun, dag::DAG, index::Int) = init!(invariant(dag, index), input_messages(r, index))
-init!(invariant::Invariant, m::DAGMessage) = eval(invariant, m)
+evaluate(r::InitRun, dag::DAG, index::Int) = init!(invariant(dag, index), input_messages(r, index))
+init!(invariant::Invariant, m::DAGMessage) = evaluate(invariant, m)
 

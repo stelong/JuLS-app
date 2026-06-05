@@ -55,8 +55,8 @@ Constructs a new DAG with specified number of decision variables.
 """
 function DAG(
     n_variables::Int;
-    helper::AbstractDAGHelper = NoHelper(),
-    early_stop_threshold::Float64 = EARLY_STOP_CONSTRAINT_THRESHOLD,
+    helper::AbstractDAGHelper=NoHelper(),
+    early_stop_threshold::Float64=EARLY_STOP_CONSTRAINT_THRESHOLD,
 )
     adj = AdjacencyMatrix()
     DAG(
@@ -83,8 +83,8 @@ helper(dag::DAG) = dag._helper
 struct _ResultInvariant <: Invariant end
 struct _DecisionVariableInvariant <: Invariant end
 InputType(::_ResultInvariant) = SingleType()
-eval(::_DecisionVariableInvariant, message::DAGMessage) = message
-eval(::_ResultInvariant, ::DAGMessage) = NoMessage()
+evaluate(::_DecisionVariableInvariant, message::DAGMessage) = message
+evaluate(::_ResultInvariant, ::DAGMessage) = NoMessage()
 commit!(::_DecisionVariableInvariant, ::DAGMessage) = nothing
 commit!(::_ResultInvariant, ::DAGMessage) = nothing
 
@@ -194,10 +194,10 @@ This maintains DAG connectivity and ensures valid evaluation paths.
 add_invariant!(
     dag::DAG,
     invariant::Invariant;
-    invariant_parent_indexes::Vector{Int} = Int[],
-    variable_parent_indexes::Vector{Int} = Int[],
-    name::Union{String,Nothing} = nothing,
-    using_cp::Bool = false,
+    invariant_parent_indexes::Vector{Int}=Int[],
+    variable_parent_indexes::Vector{Int}=Int[],
+    name::Union{String,Nothing}=nothing,
+    using_cp::Bool=false,
 ) = add_invariant!(
     dag,
     invariant,
@@ -209,8 +209,8 @@ function add_invariant!(
     dag::DAG,
     invariant::Invariant,
     parent_indexes::Vector{Int};
-    name::Union{String,Nothing} = nothing,
-    using_cp::Bool = false,
+    name::Union{String,Nothing}=nothing,
+    using_cp::Bool=false,
 )
     if isinit(dag)
         @warn "Impossible to add an invariant to a DAG for which `init!` was called. Not proceeding."
@@ -355,14 +355,14 @@ end
     @test dag._adjacency_matrix._children_adjacency_matrix == [[], []]
     @test dag._adjacency_matrix._parent_adjacency_matrix == [[], []]
 
-    JuLS.add_invariant!(dag, invariant2; invariant_parent_indexes = [1])
-    JuLS.add_invariant!(dag, invariant3; invariant_parent_indexes = [1])
+    JuLS.add_invariant!(dag, invariant2; invariant_parent_indexes=[1])
+    JuLS.add_invariant!(dag, invariant3; invariant_parent_indexes=[1])
 
     @test dag._invariants == [JuLS._DecisionVariableInvariant(), invariant1, invariant2, invariant3]
     @test dag._adjacency_matrix._children_adjacency_matrix == [[3, 4], [], [], []]
     @test dag._adjacency_matrix._parent_adjacency_matrix == [[], [], [1], [1]]
 
-    JuLS.add_invariant!(dag, invariant4; invariant_parent_indexes = [2, 3])
+    JuLS.add_invariant!(dag, invariant4; invariant_parent_indexes=[2, 3])
 
     @test length(dag) == 5
     @test dag._invariants == [JuLS._DecisionVariableInvariant(), invariant4, invariant3, invariant2, invariant1]
@@ -393,12 +393,12 @@ end
     #           \  /
     #        invariant4
 
-    invariant1_id = JuLS.add_invariant!(dag, invariant1; name = "invariant1", variable_parent_indexes = [1])
+    invariant1_id = JuLS.add_invariant!(dag, invariant1; name="invariant1", variable_parent_indexes=[1])
     invariant2_id =
-        JuLS.add_invariant!(dag, invariant2; name = "invariant2", invariant_parent_indexes = [invariant1_id])
+        JuLS.add_invariant!(dag, invariant2; name="invariant2", invariant_parent_indexes=[invariant1_id])
     invariant3_id =
-        JuLS.add_invariant!(dag, invariant3; name = "invariant3", invariant_parent_indexes = [invariant1_id])
-    invariant4_id = JuLS.add_invariant!(dag, invariant4; invariant_parent_indexes = [invariant2_id, invariant3_id])
+        JuLS.add_invariant!(dag, invariant3; name="invariant3", invariant_parent_indexes=[invariant1_id])
+    invariant4_id = JuLS.add_invariant!(dag, invariant4; invariant_parent_indexes=[invariant2_id, invariant3_id])
 
     @test dag._names == [nothing, "invariant1", "invariant2", "invariant3", nothing]
     @test JuLS.invariant_name(dag, 1) === nothing
@@ -431,10 +431,10 @@ end
     #           \  /
     #        invariant4
 
-    invariant1_id = JuLS.add_invariant!(dag, invariant1; variable_parent_indexes = [1])
-    invariant2_id = JuLS.add_invariant!(dag, invariant2; invariant_parent_indexes = [invariant1_id])
-    invariant3_id = JuLS.add_invariant!(dag, invariant3; invariant_parent_indexes = [invariant1_id])
-    invariant4_id = JuLS.add_invariant!(dag, invariant4; invariant_parent_indexes = [invariant2_id, invariant3_id])
+    invariant1_id = JuLS.add_invariant!(dag, invariant1; variable_parent_indexes=[1])
+    invariant2_id = JuLS.add_invariant!(dag, invariant2; invariant_parent_indexes=[invariant1_id])
+    invariant3_id = JuLS.add_invariant!(dag, invariant3; invariant_parent_indexes=[invariant1_id])
+    invariant4_id = JuLS.add_invariant!(dag, invariant4; invariant_parent_indexes=[invariant2_id, invariant3_id])
 
     ordered_invariant_ids, ranks = JuLS._rank_invariants!(dag)
 
@@ -465,11 +465,11 @@ end
     #           \  /
     #        invariant4
 
-    invariant1_id = JuLS.add_invariant!(dag, invariant1; variable_parent_indexes = [1], name = "1", using_cp = true)
-    invariant2_id = JuLS.add_invariant!(dag, invariant2; invariant_parent_indexes = [invariant1_id], name = "2")
-    invariant3_id = JuLS.add_invariant!(dag, invariant3; invariant_parent_indexes = [invariant1_id], name = "3")
+    invariant1_id = JuLS.add_invariant!(dag, invariant1; variable_parent_indexes=[1], name="1", using_cp=true)
+    invariant2_id = JuLS.add_invariant!(dag, invariant2; invariant_parent_indexes=[invariant1_id], name="2")
+    invariant3_id = JuLS.add_invariant!(dag, invariant3; invariant_parent_indexes=[invariant1_id], name="3")
     invariant4_id =
-        JuLS.add_invariant!(dag, invariant4; invariant_parent_indexes = [invariant2_id, invariant3_id], name = "4")
+        JuLS.add_invariant!(dag, invariant4; invariant_parent_indexes=[invariant2_id, invariant3_id], name="4")
 
     ranks = JuLS.sort_dag!(dag)
     invariant1_id = findfirst(ranks .== invariant1_id)
@@ -514,11 +514,11 @@ end
     #           \  /
     #        invariant4
 
-    invariant1_id = JuLS.add_invariant!(dag, invariant1; variable_parent_indexes = [1], name = "1", using_cp = true)
-    invariant2_id = JuLS.add_invariant!(dag, invariant2; invariant_parent_indexes = [invariant1_id], name = "2")
-    invariant3_id = JuLS.add_invariant!(dag, invariant3; invariant_parent_indexes = [invariant1_id], name = "3")
+    invariant1_id = JuLS.add_invariant!(dag, invariant1; variable_parent_indexes=[1], name="1", using_cp=true)
+    invariant2_id = JuLS.add_invariant!(dag, invariant2; invariant_parent_indexes=[invariant1_id], name="2")
+    invariant3_id = JuLS.add_invariant!(dag, invariant3; invariant_parent_indexes=[invariant1_id], name="3")
     invariant4_id =
-        JuLS.add_invariant!(dag, invariant4; invariant_parent_indexes = [invariant2_id, invariant3_id], name = "4")
+        JuLS.add_invariant!(dag, invariant4; invariant_parent_indexes=[invariant2_id, invariant3_id], name="4")
 
     @test length(dag) == 5
     @test dag._names == [nothing, "1", "2", "3", "4"]
@@ -547,13 +547,13 @@ end
     dag = JuLS.DAG(1)
     @test length(dag) == 1
 
-    JuLS.add_invariant!(dag, invariant1; name = "1")
+    JuLS.add_invariant!(dag, invariant1; name="1")
     @test length(dag) == 2
 
     @test_logs (:error, "The DAG must have exactly one last node (defined as a node without children).") begin
         @test_throws ErrorException JuLS.init!(dag)
     end
-    JuLS.add_invariant!(dag, MockInvariant(); variable_parent_indexes = [1])
+    JuLS.add_invariant!(dag, MockInvariant(); variable_parent_indexes=[1])
     JuLS.add_edge!(dag, 3, 2)
     JuLS.init!(dag)
     @test length(dag) == 4
@@ -562,7 +562,7 @@ end
     @test_logs (:warn, "Impossible to add an invariant to a DAG for which `init!` was called. Not proceeding.") JuLS.add_invariant!(
         dag,
         invariant1;
-        name = "1",
+        name="1",
     )
 end
 
@@ -577,7 +577,7 @@ end
     #  invariant1 -> invariant2 -> invariant1
 
     JuLS.add_invariant!(dag, invariant1)
-    JuLS.add_invariant!(dag, invariant2; invariant_parent_indexes = [2])
+    JuLS.add_invariant!(dag, invariant2; invariant_parent_indexes=[2])
 
     JuLS.add_edge!(dag, 3, 2)
 
@@ -593,8 +593,8 @@ end
     #  invariant1 -> invariant2 -> invariant3 -> invariant2
 
     JuLS.add_invariant!(dag, invariant1)
-    JuLS.add_invariant!(dag, invariant2; invariant_parent_indexes = [2])
-    JuLS.add_invariant!(dag, invariant3; invariant_parent_indexes = [3])
+    JuLS.add_invariant!(dag, invariant2; invariant_parent_indexes=[2])
+    JuLS.add_invariant!(dag, invariant3; invariant_parent_indexes=[3])
 
     JuLS.add_edge!(dag, 4, 3)
 
@@ -621,7 +621,7 @@ end
 
     invariant1_id = JuLS.add_invariant!(dag, invariant1)
     invariant2_id =
-        JuLS.add_invariant!(dag, invariant2; variable_parent_indexes = [1], invariant_parent_indexes = [invariant1_id])
+        JuLS.add_invariant!(dag, invariant2; variable_parent_indexes=[1], invariant_parent_indexes=[invariant1_id])
 
     @test JuLS.sort_dag!(dag) isa Any # checking that we can sort the dag without errors
     @test_throws ErrorException JuLS.init!(dag) # invariant 1 is orphan
@@ -639,8 +639,8 @@ end
     #  invariant2   invariant3
 
 
-    JuLS.add_invariant!(dag, invariant2; variable_parent_indexes = [1])
-    JuLS.add_invariant!(dag, invariant3; variable_parent_indexes = [1])
+    JuLS.add_invariant!(dag, invariant2; variable_parent_indexes=[1])
+    JuLS.add_invariant!(dag, invariant3; variable_parent_indexes=[1])
 
     @test JuLS.sort_dag!(dag) isa Any # checking that we can sort the dag without errors
     @test_throws ErrorException JuLS.init!(dag) # more than 1 last node
@@ -662,9 +662,9 @@ end
 
     dag = JuLS.DAG(1)
 
-    invariant1_id = JuLS.add_invariant!(dag, invariant1; name = "1", variable_parent_indexes = [1])
-    invariant2_id = JuLS.add_invariant!(dag, invariant2; name = "2", invariant_parent_indexes = [invariant1_id])
-    invariant3_id = JuLS.add_invariant!(dag, invariant3; name = "3", invariant_parent_indexes = [invariant2_id])
+    invariant1_id = JuLS.add_invariant!(dag, invariant1; name="1", variable_parent_indexes=[1])
+    invariant2_id = JuLS.add_invariant!(dag, invariant2; name="2", invariant_parent_indexes=[invariant1_id])
+    invariant3_id = JuLS.add_invariant!(dag, invariant3; name="3", invariant_parent_indexes=[invariant2_id])
 
     JuLS.init!(dag, JuLS.DecisionVariablesArray([JuLS.DecisionVariable(1, JuLS.BinaryDecisionValue(true))]))
 

@@ -56,8 +56,8 @@ Returns moves in order of their potential improvement
 function get_neighbourhood(
     h::GreedyNeighbourhood,
     model::Model;
-    rng = Random.GLOBAL_RNG,
-    mask = _default_mask(h, model),
+    rng=Random.GLOBAL_RNG,
+    mask=_default_mask(h, model),
 )
     if !h._is_init
         h.queue = init_neighbourhood(h, model)
@@ -117,7 +117,7 @@ _default_mask(h::GreedyNeighbourhood, model::Model) = trues(length(decision_vari
     using Random
 
     e = JuLS.KnapsackExperiment(JuLS.PROJECT_ROOT * "/data/knapsack/ks_4_0")
-    model = JuLS.init_model(e; neigh = JuLS.GreedyNeighbourhood())
+    model = JuLS.init_model(e; neigh=JuLS.GreedyNeighbourhood())
 
     rng = MersenneTwister(0)
     move = JuLS.get_neighbourhood(JuLS.neighbourhood_heuristic(model), model; rng)
@@ -136,7 +136,7 @@ _default_mask(h::GreedyNeighbourhood, model::Model) = trues(length(decision_vari
     @test move5[1] == JuLS.NO_MOVE
     @test typeof(move5) == Vector{JuLS.Move}
     @test length(JuLS.neighbourhood_heuristic(model).queue) == 0
-    JuLS.optimize!(model; limit = JuLS.IterationLimit(1))
+    JuLS.optimize!(model; limit=JuLS.IterationLimit(1))
 end
 
 @testitem "init_neighbourhood(::GreedyNeighbourhood)" begin
@@ -145,14 +145,14 @@ end
     using Base.Threads
 
     e = JuLS.KnapsackExperiment(JuLS.PROJECT_ROOT * "/data/knapsack/ks_19_0")
-    model = JuLS.init_model(e; neigh = JuLS.GreedyNeighbourhood())
+    model = JuLS.init_model(e; neigh=JuLS.GreedyNeighbourhood())
 
     @test length(JuLS.neighbourhood_heuristic(model).queue) == 0
     @test JuLS.neighbourhood_heuristic(model)._is_init == false
     moves = JuLS.init_neighbourhood(JuLS.neighbourhood_heuristic(model), model)
     @test JuLS.neighbourhood_heuristic(model)._is_init == true
     @test typeof(moves) == Vector{JuLS.LazyCartesianMoves}
-    @test JuLS.delta_obj(JuLS.eval(model.dag, moves[1][1])) <= JuLS.delta_obj(JuLS.eval(model.dag, moves[2][1]))
+    @test JuLS.delta_obj(JuLS.evaluate(model.dag, moves[1][1])) <= JuLS.delta_obj(JuLS.evaluate(model.dag, moves[2][1]))
 end
 
 @testitem "eval_variable()" begin
@@ -160,7 +160,7 @@ end
     using Random
 
     e = JuLS.KnapsackExperiment(JuLS.PROJECT_ROOT * "/data/knapsack/ks_19_0")
-    model = JuLS.init_model(e; neigh = JuLS.GreedyNeighbourhood())
+    model = JuLS.init_model(e; neigh=JuLS.GreedyNeighbourhood())
 
     @test [length(JuLS.eval_variable(variable_id, model)) for variable_id = 1:3] == [2, 2, 2]
 
@@ -172,7 +172,7 @@ end
     using Random
 
     e = JuLS.KnapsackExperiment(JuLS.PROJECT_ROOT * "/data/knapsack/ks_19_0")
-    model = JuLS.init_model(e; neigh = JuLS.GreedyNeighbourhood())
+    model = JuLS.init_model(e; neigh=JuLS.GreedyNeighbourhood())
 
     variable_id = 1
     evaluated_moves = JuLS.eval_variable(variable_id, model)

@@ -43,9 +43,9 @@ function create_graph_coloring_dag(
     n_nodes::Int,
     edges::Vector{Tuple{Int,Int}},
     max_color::Int,
-    α::Float64 = DEFAULT_PENALTY_PARAM,
+    α::Float64=DEFAULT_PENALTY_PARAM,
 )
-    dag = DAG(n_nodes; early_stop_threshold = length(edges) * α)
+    dag = DAG(n_nodes; early_stop_threshold=length(edges) * α)
 
     not_equal_ids = Int[]
     for (node1, node2) in edges
@@ -54,24 +54,24 @@ function create_graph_coloring_dag(
             add_invariant!(
                 dag,
                 RelationalInvariant{IntDecisionValue,NeOp}();
-                variable_parent_indexes = [node1, node2],
-                name = "not_equal_$(node1)_$(node2)",
-                using_cp = true,
+                variable_parent_indexes=[node1, node2],
+                name="not_equal_$(node1)_$(node2)",
+                using_cp=true,
             ),
         )
     end
 
-    constraint_id = add_invariant!(dag, StaticConstraintInvariant(α); invariant_parent_indexes = not_equal_ids)
+    constraint_id = add_invariant!(dag, StaticConstraintInvariant(α); invariant_parent_indexes=not_equal_ids)
 
     max_id = add_invariant!(
         dag,
         MaximumInvariant(max_color);
-        variable_parent_indexes = collect(1:n_nodes),
-        name = "number_of_colors",
+        variable_parent_indexes=collect(1:n_nodes),
+        name="number_of_colors",
     )
-    obj_id = add_invariant!(dag, ObjectiveInvariant(); invariant_parent_indexes = [max_id])
+    obj_id = add_invariant!(dag, ObjectiveInvariant(); invariant_parent_indexes=[max_id])
 
-    add_invariant!(dag, AggregatorInvariant(); invariant_parent_indexes = [obj_id, constraint_id])
+    add_invariant!(dag, AggregatorInvariant(); invariant_parent_indexes=[obj_id, constraint_id])
 
     return dag
 end
@@ -84,13 +84,13 @@ end
 
     move = JuLS.Move([var2, var3], [JuLS.IntDecisionValue(2), JuLS.IntDecisionValue(3)])
 
-    evaluated_move = JuLS.eval(dag, move)
+    evaluated_move = JuLS.evaluate(dag, move)
 
     @test JuLS.delta_obj(evaluated_move) == 3 - (1 + 3 * 10) # New = 3 colors 0 violation, Old = 1 color 3 violations
     @test JuLS.isfeasible(evaluated_move)
 
     move = JuLS.Move([var2, var3], [JuLS.IntDecisionValue(2), JuLS.IntDecisionValue(2)])
-    evaluated_move = JuLS.eval(dag, move)
+    evaluated_move = JuLS.evaluate(dag, move)
 
     @test JuLS.delta_obj(evaluated_move) == (2 + 1 * 10) - (1 + 3 * 10) # New = 2 colors 1 violation, Old = 1 color 3 violations
     @test !JuLS.isfeasible(evaluated_move)
@@ -103,11 +103,11 @@ end
     JuLS.init!(dag, JuLS.DecisionVariablesArray([var1, var2, var3]))
 
     move = JuLS.Move([var2, var3], [JuLS.IntDecisionValue(2), JuLS.IntDecisionValue(3)])
-    JuLS.commit!(dag, JuLS.eval(dag, move))
+    JuLS.commit!(dag, JuLS.evaluate(dag, move))
 
     var1, var2, var3 = [JuLS.DecisionVariable(i, JuLS.IntDecisionValue(i)) for i = 1:3]
 
-    evaluated_move = JuLS.eval(dag, JuLS.Move([var2, var3], [JuLS.IntDecisionValue(1), JuLS.IntDecisionValue(2)]))
+    evaluated_move = JuLS.evaluate(dag, JuLS.Move([var2, var3], [JuLS.IntDecisionValue(1), JuLS.IntDecisionValue(2)]))
 
     @test JuLS.delta_obj(evaluated_move) == (2 + 1 * 10) - (3)
     @test !JuLS.isfeasible(evaluated_move)
@@ -119,7 +119,7 @@ end
     var1, var2, var3, var4 = [JuLS.DecisionVariable(i, JuLS.IntDecisionValue(1)) for i = 1:4]
     JuLS.init!(dag, JuLS.DecisionVariablesArray([var1, var2, var3]))
 
-    solution1 = JuLS.Solution(JuLS.eval(dag, JuLS.DecisionVariablesArray(JuLS.DecisionVariable[var1, var2, var3])))
+    solution1 = JuLS.Solution(JuLS.evaluate(dag, JuLS.DecisionVariablesArray(JuLS.DecisionVariable[var1, var2, var3])))
 
     @test solution1.values == [JuLS.IntDecisionValue(1), JuLS.IntDecisionValue(1), JuLS.IntDecisionValue(1)]
     @test solution1.objective == 3 * 10 + 1
@@ -127,7 +127,7 @@ end
 
     var2 = JuLS.DecisionVariable(2, JuLS.IntDecisionValue(2))
     var3 = JuLS.DecisionVariable(3, JuLS.IntDecisionValue(3))
-    solution2 = JuLS.Solution(JuLS.eval(dag, JuLS.DecisionVariablesArray(JuLS.DecisionVariable[var1, var2, var3])))
+    solution2 = JuLS.Solution(JuLS.evaluate(dag, JuLS.DecisionVariablesArray(JuLS.DecisionVariable[var1, var2, var3])))
 
     @test solution2.values == [JuLS.IntDecisionValue(1), JuLS.IntDecisionValue(2), JuLS.IntDecisionValue(3)]
     @test solution2.objective == 3

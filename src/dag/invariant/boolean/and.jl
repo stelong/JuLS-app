@@ -15,10 +15,10 @@ mutable struct AndInvariant <: Invariant
 end
 AndInvariant() = AndInvariant(0)
 
-eval(::AndInvariant, messages::DAGMessagesVector{SingleVariableMessage{BinaryDecisionValue}}) =
+evaluate(::AndInvariant, messages::DAGMessagesVector{SingleVariableMessage{BinaryDecisionValue}}) =
     SingleVariableMessage(all(m.value.value for m in messages))
 
-function eval(invariant::AndInvariant, deltas::DAGMessagesVector{SingleVariableMoveDelta{BinaryDecisionValue}})
+function evaluate(invariant::AndInvariant, deltas::DAGMessagesVector{SingleVariableMoveDelta{BinaryDecisionValue}})
     current_value = invariant.nb_false == 0
     new_value = (invariant.nb_false + sum(δ.current_value.value - δ.new_value.value for δ in deltas)) == 0
     if current_value == new_value
@@ -35,31 +35,31 @@ function init!(invariant::AndInvariant, messages::DAGMessagesVector{SingleVariab
     return SingleVariableMessage(invariant.nb_false == 0)
 end
 
-@testitem "eval(::AndInvariant, ::SingleVariableMessage)" begin
+@testitem "evaluate(::AndInvariant, ::SingleVariableMessage)" begin
     m1 = JuLS.SingleVariableMessage(true)
     m2 = JuLS.SingleVariableMessage(false)
 
     invariant = JuLS.AndInvariant()
 
-    @test JuLS.eval(invariant, JuLS.DAGMessagesVector([m1])) == JuLS.SingleVariableMessage(true)
-    @test JuLS.eval(invariant, JuLS.DAGMessagesVector([m2])) == JuLS.SingleVariableMessage(false)
+    @test JuLS.evaluate(invariant, JuLS.DAGMessagesVector([m1])) == JuLS.SingleVariableMessage(true)
+    @test JuLS.evaluate(invariant, JuLS.DAGMessagesVector([m2])) == JuLS.SingleVariableMessage(false)
 
-    @test JuLS.eval(invariant, JuLS.DAGMessagesVector([m1, m2])) == JuLS.SingleVariableMessage(false)
-    @test JuLS.eval(invariant, JuLS.DAGMessagesVector([m1, m1])) == JuLS.SingleVariableMessage(true)
+    @test JuLS.evaluate(invariant, JuLS.DAGMessagesVector([m1, m2])) == JuLS.SingleVariableMessage(false)
+    @test JuLS.evaluate(invariant, JuLS.DAGMessagesVector([m1, m1])) == JuLS.SingleVariableMessage(true)
 end
 
-@testitem "eval(::AndInvariant, ::SingleVariableMoveDelta)" begin
+@testitem "evaluate(::AndInvariant, ::SingleVariableMoveDelta)" begin
     δ1 = JuLS.SingleVariableMoveDelta(true, false)
     δ2 = JuLS.SingleVariableMoveDelta(false, true)
 
     invariant = JuLS.AndInvariant(1)
-    @test JuLS.eval(invariant, JuLS.DAGMessagesVector([δ1])) == JuLS.NoMessage()
-    @test JuLS.eval(invariant, JuLS.DAGMessagesVector([δ2])) == JuLS.SingleVariableMoveDelta(false, true)
-    @test JuLS.eval(invariant, JuLS.DAGMessagesVector([δ2, δ1])) == JuLS.NoMessage()
+    @test JuLS.evaluate(invariant, JuLS.DAGMessagesVector([δ1])) == JuLS.NoMessage()
+    @test JuLS.evaluate(invariant, JuLS.DAGMessagesVector([δ2])) == JuLS.SingleVariableMoveDelta(false, true)
+    @test JuLS.evaluate(invariant, JuLS.DAGMessagesVector([δ2, δ1])) == JuLS.NoMessage()
 
     invariant = JuLS.AndInvariant(0)
-    @test JuLS.eval(invariant, JuLS.DAGMessagesVector([δ1])) == JuLS.SingleVariableMoveDelta(true, false)
-    @test JuLS.eval(invariant, JuLS.DAGMessagesVector([δ2, δ1])) == JuLS.NoMessage()
+    @test JuLS.evaluate(invariant, JuLS.DAGMessagesVector([δ1])) == JuLS.SingleVariableMoveDelta(true, false)
+    @test JuLS.evaluate(invariant, JuLS.DAGMessagesVector([δ2, δ1])) == JuLS.NoMessage()
 end
 
 @testitem "commit!(::AndInvariant)" begin

@@ -83,19 +83,19 @@ Performs a validation check between final solution evaluation and incremental de
 """
 function make_output_folder(
     model::AbstractModel;
-    output_path::String = joinpath(PROJECT_ROOT, "JuLS_output"),
-    output_type::Type{<:OutputType} = BestSolutionOutput,
+    output_path::String=joinpath(PROJECT_ROOT, "JuLS_output"),
+    output_type::Type{<:OutputType}=BestSolutionOutput,
 )
     if !(model.dag isa DAG)
         return
     end
 
     if ispath(output_path)
-        rm(output_path; force = true, recursive = true)
+        rm(output_path; force=true, recursive=true)
     end
     mkpath(output_path)
 
-    full_eval_solution = Solution(eval(model.dag, DecisionVariablesArray(model.decision_variables)))
+    full_eval_solution = Solution(evaluate(model.dag, DecisionVariablesArray(model.decision_variables)))
 
     if (full_eval_solution.feasible != model.current_solution.feasible) ||
        !isapprox(full_eval_solution.objective, model.current_solution.objective)
@@ -119,21 +119,21 @@ end
 
 Internal function to write solution data to files. This triggers a DAG full evaluation to write the output of each invariant.
 """
-function _write_output(model::AbstractModel, output_path::String; output_type::Type{<:OutputType} = BestSolutionOutput)
+function _write_output(model::AbstractModel, output_path::String; output_type::Type{<:OutputType}=BestSolutionOutput)
     input = OutputInput(output_type, model, output_path)
 
     variables_df = DataFrame(
-        id = 1:length(input.original_variables.variables),
-        old_value = [v.current_value.value for v in input.original_variables.variables],
-        new_value = [v.current_value.value for v in input.best_variables.variables],
+        id=1:length(input.original_variables.variables),
+        old_value=[v.current_value.value for v in input.original_variables.variables],
+        new_value=[v.current_value.value for v in input.best_variables.variables],
     )
     objective_df = DataFrame(
-        iteration = 1:length(model.run_metrics.objective),
-        objective_value = model.run_metrics.objective,
-        is_feasible = model.run_metrics.feasible,
-        iteration_time = model.run_metrics.iteration_time,
+        iteration=1:length(model.run_metrics.objective),
+        objective_value=model.run_metrics.objective,
+        is_feasible=model.run_metrics.feasible,
+        iteration_time=model.run_metrics.iteration_time,
     )
-    broken_constraints_df = DataFrame(broken_constraints = [])
+    broken_constraints_df = DataFrame(broken_constraints=[])
 
     CSV.write(joinpath(output_path, "variables.csv"), variables_df)
     CSV.write(joinpath(output_path, "objective.csv"), objective_df)
@@ -149,7 +149,7 @@ function _write_output(model::AbstractModel, output_path::String; output_type::T
         output_path::String,
     )
 
-    eval(dag(model), input)
+    evaluate(dag(model), input)
 end
 
 write_output_variables(::AbstractDAGHelper, ::Vector{<:DecisionValue}, ::String) = nothing
@@ -161,13 +161,13 @@ write_output_variables(::AbstractDAGHelper, ::Vector{<:DecisionValue}, ::String)
     experience = JuLS.KnapsackExperiment(JuLS.PROJECT_ROOT * "/data/knapsack/ks_4_0", 10.0)
 
     model =
-        JuLS.init_model(experience; init = JuLS.SimpleInitialization(), neigh = JuLS.BinaryRandomNeighbourhood(50, 2))
+        JuLS.init_model(experience; init=JuLS.SimpleInitialization(), neigh=JuLS.BinaryRandomNeighbourhood(50, 2))
 
-    JuLS.optimize!(model; limit = JuLS.IterationLimit(1), rng = Random.MersenneTwister(0))
+    JuLS.optimize!(model; limit=JuLS.IterationLimit(1), rng=Random.MersenneTwister(0))
 
     test_path = joinpath(JuLS.PROJECT_ROOT, "dummy_folder_for_knapsack_test")
 
-    JuLS.make_output_folder(model; output_path = test_path)
+    JuLS.make_output_folder(model; output_path=test_path)
 
     invariants_df = CSV.read(JuLS.invariant_filename(test_path), DataFrame)
     modified_invariants_df = CSV.read(JuLS.modified_invariant_filename(test_path), DataFrame)
@@ -177,7 +177,7 @@ write_output_variables(::AbstractDAGHelper, ::Vector{<:DecisionValue}, ::String)
 
     objective_df = CSV.read(joinpath(test_path, "objective.csv"), DataFrame)
 
-    rm(test_path, recursive = true)
+    rm(test_path, recursive=true)
 
 
     @test names(invariants_df) == ["invariant_name", "old_value", "new_value"]

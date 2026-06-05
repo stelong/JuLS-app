@@ -22,7 +22,7 @@ function filter_moves(model::Model, filter::CPEnumeration, moves::LazyCartesianM
     relaxed_variables = Int[var.index for var in moves.selected_variables]
     current_solution = Int[v.value for v in model.current_solution.values]
 
-    filtering_time = @elapsed filtered_moves = eval(filter.cp_model, current_solution, relaxed_variables)
+    filtering_time = @elapsed filtered_moves = evaluate(filter.cp_model, current_solution, relaxed_variables)
 
     if filter.display
         display_filtering_performance(length(moves) - 1, length(filtered_moves), filtering_time)

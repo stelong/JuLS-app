@@ -9,21 +9,21 @@ y = !x
 """
 struct NegationInvariant <: StatelessInvariant end
 
-eval(
+evaluate(
     invariant::NegationInvariant,
     deltas::DAGMessagesVector{
         <:Union{SingleVariableMoveDelta{BinaryDecisionValue},SingleVariableMessage{BinaryDecisionValue}},
     },
-) = DAGMessagesVector([eval(invariant, δ) for δ in deltas])
+) = DAGMessagesVector([evaluate(invariant, δ) for δ in deltas])
 
-eval(::NegationInvariant, δ::SingleVariableMoveDelta{BinaryDecisionValue}) =
+evaluate(::NegationInvariant, δ::SingleVariableMoveDelta{BinaryDecisionValue}) =
     SingleVariableMoveDelta{BinaryDecisionValue}(
         δ.index,
         BinaryDecisionValue(!δ.current_value.value),
         BinaryDecisionValue(!δ.new_value.value),
     )
 
-eval(::NegationInvariant, m::SingleVariableMessage{BinaryDecisionValue}) =
+evaluate(::NegationInvariant, m::SingleVariableMessage{BinaryDecisionValue}) =
     SingleVariableMessage{BinaryDecisionValue}(m.index, BinaryDecisionValue(!m.value.value))
 
 @testitem "eval NegationInvariant" begin
@@ -32,7 +32,7 @@ eval(::NegationInvariant, m::SingleVariableMessage{BinaryDecisionValue}) =
     delta1 = JuLS.SingleVariableMoveDelta(1, JuLS.BinaryDecisionValue(false), JuLS.BinaryDecisionValue(true))
     delta2 = JuLS.SingleVariableMoveDelta(3, JuLS.BinaryDecisionValue(true), JuLS.BinaryDecisionValue(false))
 
-    @test JuLS.eval(
+    @test JuLS.evaluate(
         invariant,
         JuLS.DAGMessagesVector{JuLS.SingleVariableMoveDelta{JuLS.BinaryDecisionValue}}([delta1, delta2]),
     ).messages == [
@@ -43,7 +43,7 @@ eval(::NegationInvariant, m::SingleVariableMessage{BinaryDecisionValue}) =
     message1 = JuLS.SingleVariableMessage(1, JuLS.BinaryDecisionValue(false))
     message2 = JuLS.SingleVariableMessage(27, JuLS.BinaryDecisionValue(true))
 
-    @test JuLS.eval(
+    @test JuLS.evaluate(
         invariant,
         JuLS.DAGMessagesVector{JuLS.SingleVariableMessage{JuLS.BinaryDecisionValue}}([message1, message2]),
     ).messages == [

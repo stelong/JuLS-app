@@ -11,9 +11,9 @@ struct ScalarProductInvariant <: SummableEvalInvariant
     weights::Array{Float64}
 end
 
-eval(invariant::ScalarProductInvariant, delta::SingleVariableMoveDelta{BinaryDecisionValue}) =
+evaluate(invariant::ScalarProductInvariant, delta::SingleVariableMoveDelta{BinaryDecisionValue}) =
     FloatDelta((delta.new_value.value - delta.current_value.value) * invariant.weights[delta.index])
-eval(invariant::ScalarProductInvariant, m::SingleVariableMessage{BinaryDecisionValue}) =
+evaluate(invariant::ScalarProductInvariant, m::SingleVariableMessage{BinaryDecisionValue}) =
     FloatFullMessage(m.value.value * invariant.weights[m.index])
 
 commit!(::ScalarProductInvariant, ::SingleVariableMoveDelta{BinaryDecisionValue}) = nothing
@@ -35,7 +35,7 @@ end
     push!(lazy_messages, delta2)
     input = JuLS.DAGMessagesVector(lazy_messages)
 
-    @test JuLS.eval(invariant, input) == JuLS.FloatDelta(4.0)
+    @test JuLS.evaluate(invariant, input) == JuLS.FloatDelta(4.0)
 end
 
 @testitem "Test eval full" begin
@@ -51,7 +51,7 @@ end
     push!(lazy_messages, message3)
     input = JuLS.DAGMessagesVector(lazy_messages)
 
-    @test JuLS.eval(invariant, input) == JuLS.FloatFullMessage(1.0)
+    @test JuLS.evaluate(invariant, input) == JuLS.FloatFullMessage(1.0)
 end
 
 @testitem "Test eval 2" begin
@@ -65,7 +65,7 @@ end
     push!(lazy_messages, delta2)
     input = JuLS.DAGMessagesVector(lazy_messages)
 
-    @test iszero(JuLS.eval(invariant, input))
+    @test iszero(JuLS.evaluate(invariant, input))
 end
 
 @testitem "Test eval 3" begin
@@ -79,7 +79,7 @@ end
     push!(lazy_messages, delta2)
     input = JuLS.DAGMessagesVector(lazy_messages)
 
-    @test JuLS.eval(invariant, input) == JuLS.FloatDelta(4.0)
+    @test JuLS.evaluate(invariant, input) == JuLS.FloatDelta(4.0)
 
     delta1 = JuLS.SingleVariableMoveDelta(1, JuLS.BinaryDecisionValue(true), JuLS.BinaryDecisionValue(false))
     delta2 = JuLS.SingleVariableMoveDelta(3, JuLS.BinaryDecisionValue(true), JuLS.BinaryDecisionValue(false))
@@ -89,5 +89,5 @@ end
     push!(lazy_messages, delta2)
     input = JuLS.DAGMessagesVector(lazy_messages)
 
-    @test JuLS.eval(invariant, input) == JuLS.FloatDelta(-4.0)
+    @test JuLS.evaluate(invariant, input) == JuLS.FloatDelta(-4.0)
 end

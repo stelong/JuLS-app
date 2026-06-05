@@ -43,11 +43,11 @@ end
 
 output_path(r::OutputRun) = r.input.path
 
-function eval(r::OutputRun, dag::DAG, index::Int)
+function evaluate(r::OutputRun, dag::DAG, index::Int)
     input_message = input_messages(r, index)
     current_invariant = invariant(dag, index)
 
-    return output(current_invariant, input_message, output_path(r), helper(dag); name = invariant_name(dag, index))
+    return output(current_invariant, input_message, output_path(r), helper(dag); name=invariant_name(dag, index))
 end
 
 abstract type FeasibilityEvaluation end
@@ -83,10 +83,10 @@ function output(
     message::OutputMessage,
     output_path::String,
     ::AbstractDAGHelper;
-    name::Union{String,Nothing} = nothing,
+    name::Union{String,Nothing}=nothing,
 )
-    best_value = eval(invariant, message.best_message)
-    original_value = eval(invariant, message.original_message)
+    best_value = evaluate(invariant, message.best_message)
+    original_value = evaluate(invariant, message.original_message)
 
     write_invariant_file(output_string(best_value), output_string(original_value), name, output_path)
 
@@ -95,7 +95,7 @@ function output(
             @warn "An invariant is an hard constraint and has no name"
             name = "nothing"
         end
-        CSV.write(broken_constraints_filename(output_path), DataFrame(broken_constraints = [name]); append = true)
+        CSV.write(broken_constraints_filename(output_path), DataFrame(broken_constraints=[name]); append=true)
     end
 
     return OutputMessage(best_value, original_value)
@@ -107,16 +107,16 @@ write_invariant_file(::String, ::String, ::Nothing, ::String) = nothing
 function write_invariant_file(best_value::String, original_value::String, invariant_name::String, output_path::String)
     CSV.write(
         invariant_filename(output_path),
-        DataFrame(invariant_name = [invariant_name], old_value = [original_value], new_value = [best_value]);
-        append = true,
+        DataFrame(invariant_name=[invariant_name], old_value=[original_value], new_value=[best_value]);
+        append=true,
     )
     if best_value == original_value
         return
     end
     CSV.write(
         modified_invariant_filename(output_path),
-        DataFrame(invariant_name = [invariant_name], old_value = [original_value], new_value = [best_value]);
-        append = true,
+        DataFrame(invariant_name=[invariant_name], old_value=[original_value], new_value=[best_value]);
+        append=true,
     )
 end
 
@@ -125,8 +125,8 @@ modified_invariant_filename(output_path::String) = joinpath(output_path, "modifi
 broken_constraints_filename(output_path::String) = joinpath(output_path, "broken_constraints.csv")
 
 function _set_files(output_path::String)
-    CSV.write(invariant_filename(output_path), DataFrame(invariant_name = [], old_value = [], new_value = []);)
-    CSV.write(modified_invariant_filename(output_path), DataFrame(invariant_name = [], old_value = [], new_value = []);)
+    CSV.write(invariant_filename(output_path), DataFrame(invariant_name=[], old_value=[], new_value=[]);)
+    CSV.write(modified_invariant_filename(output_path), DataFrame(invariant_name=[], old_value=[], new_value=[]);)
 end
 
 @testitem "Testing output function" begin
@@ -136,7 +136,7 @@ end
         nb_of_eval::Int
     end
 
-    function JuLS.eval(i::MockInvariant, ::JuLS.DecisionVariablesArray)
+    function JuLS.evaluate(i::MockInvariant, ::JuLS.DecisionVariablesArray)
         i.nb_of_eval += 1
         return JuLS.FloatFullMessage(i.nb_of_eval)
     end
@@ -161,7 +161,7 @@ end
 
     JuLS.InputType(::MockInvariant) = JuLS.SingleType()
 
-    function JuLS.eval(i::MockInvariant, ::JuLS.SingleVariableMessage)
+    function JuLS.evaluate(i::MockInvariant, ::JuLS.SingleVariableMessage)
         return JuLS.FloatFullMessage(i.nb_of_eval)
     end
 
@@ -169,7 +169,7 @@ end
 
     dag = JuLS.DAG(1)
 
-    JuLS.add_invariant!(dag, invariant; variable_parent_indexes = [1], name = "dummy_invariant")
+    JuLS.add_invariant!(dag, invariant; variable_parent_indexes=[1], name="dummy_invariant")
 
     JuLS.init!(dag)
 
@@ -181,12 +181,12 @@ end
         test_path,
     )
 
-    JuLS.eval(dag, input)
+    JuLS.evaluate(dag, input)
 
     invariants_df = CSV.read(JuLS.invariant_filename(test_path), DataFrame)
     modified_invariants_df = CSV.read(JuLS.modified_invariant_filename(test_path), DataFrame)
 
-    rm(test_path, recursive = true)
+    rm(test_path, recursive=true)
 
     @test names(invariants_df) == ["invariant_name", "old_value", "new_value"]
     @test names(modified_invariants_df) == ["invariant_name", "old_value", "new_value"]
@@ -209,7 +209,7 @@ end
     end
     JuLS.InputType(::MockInvariant) = JuLS.SingleType()
 
-    function JuLS.eval(i::MockInvariant, ::JuLS.SingleVariableMessage)
+    function JuLS.evaluate(i::MockInvariant, ::JuLS.SingleVariableMessage)
         i.nb_of_eval += 1
         return JuLS.FloatFullMessage(i.nb_of_eval)
     end
@@ -218,7 +218,7 @@ end
 
     dag = JuLS.DAG(1)
 
-    JuLS.add_invariant!(dag, invariant; variable_parent_indexes = [1], name = "dummy_invariant")
+    JuLS.add_invariant!(dag, invariant; variable_parent_indexes=[1], name="dummy_invariant")
 
     JuLS.init!(dag)
 
@@ -230,12 +230,12 @@ end
         test_path,
     )
 
-    JuLS.eval(dag, input)
+    JuLS.evaluate(dag, input)
 
     invariants_df = CSV.read(JuLS.invariant_filename(test_path), DataFrame)
     modified_invariants_df = CSV.read(JuLS.modified_invariant_filename(test_path), DataFrame)
 
-    rm(test_path, recursive = true)
+    rm(test_path, recursive=true)
 
     @test names(invariants_df) == ["invariant_name", "old_value", "new_value"]
     @test names(modified_invariants_df) == ["invariant_name", "old_value", "new_value"]
@@ -256,12 +256,12 @@ end
         test_path,
     )
 
-    JuLS.eval(dag, input)
+    JuLS.evaluate(dag, input)
 
     invariants_df = CSV.read(JuLS.invariant_filename(test_path), DataFrame)
     modified_invariants_df = CSV.read(JuLS.modified_invariant_filename(test_path), DataFrame)
 
-    rm(test_path, recursive = true)
+    rm(test_path, recursive=true)
 
     @test names(invariants_df) == ["invariant_name", "old_value", "new_value"]
     @test names(modified_invariants_df) == ["invariant_name", "old_value", "new_value"]
@@ -284,7 +284,7 @@ end
     end
     JuLS.InputType(::MockInvariant) = JuLS.SingleType()
 
-    function JuLS.eval(i::MockInvariant, ::JuLS.SingleVariableMessage)
+    function JuLS.evaluate(i::MockInvariant, ::JuLS.SingleVariableMessage)
         return JuLS.FloatFullMessage(i.nb_of_eval)
     end
 
@@ -292,7 +292,7 @@ end
 
     dag = JuLS.DAG(1)
 
-    JuLS.add_invariant!(dag, invariant; variable_parent_indexes = [1])
+    JuLS.add_invariant!(dag, invariant; variable_parent_indexes=[1])
 
     JuLS.init!(dag)
 
@@ -304,12 +304,12 @@ end
         test_path,
     )
 
-    JuLS.eval(dag, input)
+    JuLS.evaluate(dag, input)
 
     invariants_df = CSV.read(JuLS.invariant_filename(test_path), DataFrame)
     modified_invariants_df = CSV.read(JuLS.modified_invariant_filename(test_path), DataFrame)
 
-    rm(test_path, recursive = true)
+    rm(test_path, recursive=true)
 
     @test names(invariants_df) == ["invariant_name", "old_value", "new_value"]
     @test names(modified_invariants_df) == ["invariant_name", "old_value", "new_value"]
@@ -332,7 +332,7 @@ end
     end
     JuLS.InputType(::MockInvariant) = JuLS.SingleType()
 
-    function JuLS.eval(i::MockInvariant, ::JuLS.SingleVariableMessage)
+    function JuLS.evaluate(i::MockInvariant, ::JuLS.SingleVariableMessage)
         i.nb_of_eval += 1
         return JuLS.FloatFullMessage(i.nb_of_eval)
     end
@@ -341,7 +341,7 @@ end
 
     dag = JuLS.DAG(1)
 
-    JuLS.add_invariant!(dag, invariant; variable_parent_indexes = [1])
+    JuLS.add_invariant!(dag, invariant; variable_parent_indexes=[1])
 
     JuLS.init!(dag)
 
@@ -353,12 +353,12 @@ end
         test_path,
     )
 
-    JuLS.eval(dag, input)
+    JuLS.evaluate(dag, input)
 
     invariants_df = CSV.read(JuLS.invariant_filename(test_path), DataFrame)
     modified_invariants_df = CSV.read(JuLS.modified_invariant_filename(test_path), DataFrame)
 
-    rm(test_path, recursive = true)
+    rm(test_path, recursive=true)
 
     @test names(invariants_df) == ["invariant_name", "old_value", "new_value"]
     @test names(modified_invariants_df) == ["invariant_name", "old_value", "new_value"]
@@ -381,7 +381,7 @@ end
     end
     JuLS.InputType(::MockInvariant) = JuLS.SingleType()
 
-    function JuLS.eval(i::MockInvariant, ::JuLS.SingleVariableMessage)
+    function JuLS.evaluate(i::MockInvariant, ::JuLS.SingleVariableMessage)
         i.nb_of_eval += 1
         return JuLS.FloatDelta(i.nb_of_eval)
     end
@@ -390,7 +390,7 @@ end
 
     dag = JuLS.DAG(1)
 
-    JuLS.add_invariant!(dag, invariant; variable_parent_indexes = [1])
+    JuLS.add_invariant!(dag, invariant; variable_parent_indexes=[1])
 
     JuLS.init!(dag)
 
@@ -402,12 +402,12 @@ end
         test_path,
     )
 
-    JuLS.eval(dag, input)
+    JuLS.evaluate(dag, input)
 
     invariants_df = CSV.read(JuLS.invariant_filename(test_path), DataFrame)
     modified_invariants_df = CSV.read(JuLS.modified_invariant_filename(test_path), DataFrame)
 
-    rm(test_path, recursive = true)
+    rm(test_path, recursive=true)
 
     @test names(invariants_df) == ["invariant_name", "old_value", "new_value"]
     @test names(modified_invariants_df) == ["invariant_name", "old_value", "new_value"]

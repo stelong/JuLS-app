@@ -64,8 +64,8 @@ function Model(
     neighbourhood_heuristic::NeighbourhoodHeuristic,
     move_selection_heuristic::MoveSelectionHeuristic,
     dag::MoveEvaluator;
-    current_solution::Solution = Solution(decision_variables, dag),
-    move_filter::AbstractMoveFilter = DummyMoveFilter(),
+    current_solution::Solution=Solution(decision_variables, dag),
+    move_filter::AbstractMoveFilter=DummyMoveFilter(),
 )
     best_solution = isfeasible(current_solution) ? copy(current_solution) : nothing
     return Model(
@@ -163,14 +163,14 @@ Main optimization function that iteratively improves the solution.
 - `rng`: Random number generator
 - `n_iterations::Int`: Number of iterations to perform
 """
-optimize!(model::AbstractModel; limit::Limit = IterationLimit(100), rng = Random.GLOBAL_RNG) =
+optimize!(model::AbstractModel; limit::Limit=IterationLimit(100), rng=Random.GLOBAL_RNG) =
     optimize!(model, Move, limit, rng)
 
 function optimize!(
     model::AbstractModel,
     T::Type{<:MoveEvaluatorInput},
     iteration_limit::IterationLimit,
-    rng = Random.GLOBAL_RNG,
+    rng=Random.GLOBAL_RNG,
 )
     n_iterations = iteration_limit.n_iterations
     size_hint!(model, n_iterations)
@@ -179,7 +179,7 @@ function optimize!(
     end
 end
 
-function optimize!(model::AbstractModel, T::Type{<:MoveEvaluatorInput}, time_limit::TimeLimit, rng = Random.GLOBAL_RNG)
+function optimize!(model::AbstractModel, T::Type{<:MoveEvaluatorInput}, time_limit::TimeLimit, rng=Random.GLOBAL_RNG)
     start!(time_limit)
     while !is_above(time_limit)
         size_hint!(model, 1)
@@ -200,7 +200,7 @@ Performs one iteration of the optimization process.
 3. Select and apply a move
 4. Update metrics and best solution if necessary
 """
-function optimize_one_iteration!(model::AbstractModel, T::Type{<:MoveEvaluatorInput}; rng = Random.GLOBAL_RNG)
+function optimize_one_iteration!(model::AbstractModel, T::Type{<:MoveEvaluatorInput}; rng=Random.GLOBAL_RNG)
     moves = get_neighbourhood(neighbourhood_heuristic(model), model; rng)
 
     evaluated_moves = evaluate_moves(model, T, moves)
@@ -230,7 +230,7 @@ function evaluate_moves(
     model::AbstractModel,
     T::Type{<:MoveEvaluatorInput},
     moves::AbstractArray{<:MoveEvaluatorInput,1},
-    rng = Random.GLOBAL_RNG,
+    rng=Random.GLOBAL_RNG,
 )
     filtered_moves = filter_moves(model, moves, rng)
 
@@ -242,7 +242,7 @@ function evaluate_moves(
     number_of_batches = n_evaluation ÷ MOVE_BATCH_SIZE + 1
     for i = 1:number_of_batches
         Threads.@threads for i = (1+(i-1)*MOVE_BATCH_SIZE):min(i * MOVE_BATCH_SIZE, n_evaluation)
-            evaluated_moves[i] = MoveEvaluatorOutput(eval(dag(model), generate_input(T, model, filtered_moves[i])))
+            evaluated_moves[i] = MoveEvaluatorOutput(evaluate(dag(model), generate_input(T, model, filtered_moves[i])))
         end
     end
 

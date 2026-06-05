@@ -46,13 +46,13 @@ function init!(
     )
 end
 
-eval(
+evaluate(
     invariant::RelationalInvariant{T,R},
     messages::DAGMessagesVector{SingleVariableMessage{T}},
 ) where {T<:DecisionValue,R<:RelationalOperator} =
     FloatFullMessage(!apply(invariant.comp, messages[1].value, messages[2].value))
 
-function eval(
+function evaluate(
     invariant::RelationalInvariant{T,R},
     deltas::DAGMessagesVector{SingleVariableMoveDelta{T}},
 ) where {T<:DecisionValue,R<:RelationalOperator}
@@ -87,7 +87,7 @@ end
     @test invariant.current_values[37].value == 9
 end
 
-@testitem "eval(::RelationalInvariant{::EqOp}, ::Delta)" begin
+@testitem "evaluate(::RelationalInvariant{::EqOp}, ::Delta)" begin
     invariant = JuLS.RelationalInvariant{JuLS.IntDecisionValue,JuLS.EqOp}()
     x = JuLS.SingleVariableMessage(3, JuLS.IntDecisionValue(12))
     y = JuLS.SingleVariableMessage(37, JuLS.IntDecisionValue(9))
@@ -96,18 +96,18 @@ end
     x1 = JuLS.SingleVariableMoveDelta(3, JuLS.IntDecisionValue(12), JuLS.IntDecisionValue(5))
     y1 = JuLS.SingleVariableMoveDelta(37, JuLS.IntDecisionValue(9), JuLS.IntDecisionValue(5))
 
-    delta = JuLS.eval(invariant, JuLS.DAGMessagesVector([x1, y1]))
+    delta = JuLS.evaluate(invariant, JuLS.DAGMessagesVector([x1, y1]))
     @test delta.value == -1
 
     x2 = JuLS.SingleVariableMoveDelta(3, JuLS.IntDecisionValue(12), JuLS.IntDecisionValue(8))
     y2 = JuLS.SingleVariableMoveDelta(37, JuLS.IntDecisionValue(9), JuLS.IntDecisionValue(1))
 
-    delta = JuLS.eval(invariant, JuLS.DAGMessagesVector([x2, y2]))
+    delta = JuLS.evaluate(invariant, JuLS.DAGMessagesVector([x2, y2]))
     @test delta.value == 0
 
     x3 = JuLS.SingleVariableMoveDelta(3, JuLS.IntDecisionValue(12), JuLS.IntDecisionValue(9))
 
-    delta = JuLS.eval(invariant, JuLS.DAGMessagesVector([x3]))
+    delta = JuLS.evaluate(invariant, JuLS.DAGMessagesVector([x3]))
     @test delta.value == -1
 end
 
@@ -127,7 +127,7 @@ end
 
     x2 = JuLS.SingleVariableMoveDelta(3, JuLS.IntDecisionValue(12), JuLS.IntDecisionValue(8))
     y2 = JuLS.SingleVariableMoveDelta(37, JuLS.IntDecisionValue(9), JuLS.IntDecisionValue(1))
-    delta = JuLS.eval(invariant, JuLS.DAGMessagesVector([x2, y2]))
+    delta = JuLS.evaluate(invariant, JuLS.DAGMessagesVector([x2, y2]))
     @test delta.value == 1
 end
 
@@ -140,18 +140,18 @@ end
     x1 = JuLS.SingleVariableMoveDelta(3, JuLS.IntDecisionValue(12), JuLS.IntDecisionValue(5))
     y1 = JuLS.SingleVariableMoveDelta(37, JuLS.IntDecisionValue(9), JuLS.IntDecisionValue(5))
 
-    delta = JuLS.eval(invariant, JuLS.DAGMessagesVector([x1, y1]))
+    delta = JuLS.evaluate(invariant, JuLS.DAGMessagesVector([x1, y1]))
     @test delta.value == 1
 
     JuLS.commit!(invariant, JuLS.DAGMessagesVector([x1, y1]))
 
-    delta = JuLS.eval(invariant, JuLS.DAGMessagesVector([x1, y1]))
+    delta = JuLS.evaluate(invariant, JuLS.DAGMessagesVector([x1, y1]))
     @test delta.value == 0
     @test invariant.current_values[3].value == 5
     @test invariant.current_values[37].value == 5
 
     x2 = JuLS.SingleVariableMoveDelta(3, JuLS.IntDecisionValue(5), JuLS.IntDecisionValue(8))
     y2 = JuLS.SingleVariableMoveDelta(37, JuLS.IntDecisionValue(5), JuLS.IntDecisionValue(1))
-    delta = JuLS.eval(invariant, JuLS.DAGMessagesVector([x2, y2]))
+    delta = JuLS.evaluate(invariant, JuLS.DAGMessagesVector([x2, y2]))
     @test delta.value == -1
 end

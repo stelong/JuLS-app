@@ -18,10 +18,10 @@ end
 
 ComparatorInvariant(capacity::Number) = ComparatorInvariant(0.0, capacity)
 
-eval(invariant::ComparatorInvariant, message::FloatFullMessage) =
+evaluate(invariant::ComparatorInvariant, message::FloatFullMessage) =
     FloatFullMessage(max(0, message.value - invariant.original_capacity))
 
-eval(invariant::ComparatorInvariant, δ::FloatDelta) = FloatDelta(
+evaluate(invariant::ComparatorInvariant, δ::FloatDelta) = FloatDelta(
     max(0, δ.value + invariant.current_value - invariant.original_capacity) -
     max(0, invariant.current_value - invariant.original_capacity),
 )
@@ -29,7 +29,7 @@ eval(invariant::ComparatorInvariant, δ::FloatDelta) = FloatDelta(
 commit!(invariant::ComparatorInvariant, δ::FloatDelta) = (invariant.current_value += δ.value)
 
 init!(invariant::ComparatorInvariant, message::FloatFullMessage) =
-    (invariant.current_value = message.value; eval(invariant, message))
+    (invariant.current_value = message.value; evaluate(invariant, message))
 
 @testitem "init!(::ComparatorInvariant)" begin
     invariant = JuLS.ComparatorInvariant(10.0)
@@ -51,8 +51,8 @@ end
     delta2 = JuLS.FloatDelta(3.0)
     delta3 = JuLS.FloatDelta(10.0)
 
-    @test iszero(JuLS.eval(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2])))
-    @test JuLS.eval(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2, delta3])) ==
+    @test iszero(JuLS.evaluate(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2])))
+    @test JuLS.evaluate(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2, delta3])) ==
           JuLS.FloatDelta(5.0)
 end
 
@@ -63,8 +63,8 @@ end
     delta2 = JuLS.FloatDelta(3.0)
     delta3 = JuLS.FloatDelta(10.0)
 
-    @test JuLS.eval(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2])) == JuLS.FloatDelta(5.0)
-    @test JuLS.eval(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2, delta3])) ==
+    @test JuLS.evaluate(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2])) == JuLS.FloatDelta(5.0)
+    @test JuLS.evaluate(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2, delta3])) ==
           JuLS.FloatDelta(15.0)
 end
 
@@ -75,8 +75,8 @@ end
     delta2 = JuLS.FloatDelta(-3.0)
     delta3 = JuLS.FloatDelta(-10.0)
 
-    @test JuLS.eval(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2])) == JuLS.FloatDelta(-5.0)
-    @test JuLS.eval(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2, delta3])) ==
+    @test JuLS.evaluate(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2])) == JuLS.FloatDelta(-5.0)
+    @test JuLS.evaluate(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2, delta3])) ==
           JuLS.FloatDelta(-10.0)
 end
 
@@ -87,8 +87,8 @@ end
     delta2 = JuLS.FloatDelta(-3.0)
     delta3 = JuLS.FloatDelta(-10.0)
 
-    @test iszero(JuLS.eval(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2])))
-    @test iszero(JuLS.eval(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2, delta3])))
+    @test iszero(JuLS.evaluate(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2])))
+    @test iszero(JuLS.evaluate(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2, delta3])))
 end
 
 @testitem "Test eval full" begin
@@ -98,9 +98,9 @@ end
     message2 = JuLS.FloatFullMessage(3.0)
     message3 = JuLS.FloatFullMessage(10.0)
 
-    @test JuLS.eval(invariant, JuLS.DAGMessagesVector{JuLS.FloatFullMessage}([message1, message2])) ==
+    @test JuLS.evaluate(invariant, JuLS.DAGMessagesVector{JuLS.FloatFullMessage}([message1, message2])) ==
           JuLS.FloatFullMessage(0)
-    @test JuLS.eval(invariant, JuLS.DAGMessagesVector{JuLS.FloatFullMessage}([message1, message2, message3])) ==
+    @test JuLS.evaluate(invariant, JuLS.DAGMessagesVector{JuLS.FloatFullMessage}([message1, message2, message3])) ==
           JuLS.FloatFullMessage(5.0)
 
 
@@ -111,9 +111,9 @@ end
 
     JuLS.commit!(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2])) # check that it still works after a commit
 
-    @test JuLS.eval(invariant, JuLS.DAGMessagesVector{JuLS.FloatFullMessage}([message1, message2])) ==
+    @test JuLS.evaluate(invariant, JuLS.DAGMessagesVector{JuLS.FloatFullMessage}([message1, message2])) ==
           JuLS.FloatFullMessage(0)
-    @test JuLS.eval(invariant, JuLS.DAGMessagesVector{JuLS.FloatFullMessage}([message1, message2, message3])) ==
+    @test JuLS.evaluate(invariant, JuLS.DAGMessagesVector{JuLS.FloatFullMessage}([message1, message2, message3])) ==
           JuLS.FloatFullMessage(5.0)
 end
 
@@ -128,8 +128,8 @@ end
 
     @test invariant.current_value == 5.0
 
-    @test iszero(JuLS.eval(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2])))
-    @test JuLS.eval(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2, delta3])) ==
+    @test iszero(JuLS.evaluate(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2])))
+    @test JuLS.evaluate(invariant, JuLS.DAGMessagesVector{JuLS.FloatDelta}([delta1, delta2, delta3])) ==
           JuLS.FloatDelta(10.0)
 
 end
@@ -144,5 +144,5 @@ end
 
     @test invariant.current_value == 11.0
 
-    @test JuLS.eval(invariant, delta1) == JuLS.FloatDelta(-1.0)
+    @test JuLS.evaluate(invariant, delta1) == JuLS.FloatDelta(-1.0)
 end

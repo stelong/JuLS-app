@@ -15,18 +15,18 @@ end
 InputType(::AggregatorInvariant) = MultiType()
 
 AggregatorInvariant() = AggregatorInvariant(0.0)
-eval(invariant::AggregatorInvariant, ::NoMessage) = ResultDelta(0.0, iszero(invariant.current_constraint))
+evaluate(invariant::AggregatorInvariant, ::NoMessage) = ResultDelta(0.0, iszero(invariant.current_constraint))
 
-eval(invariant::AggregatorInvariant) = ResultDelta(0.0, invariant.current_constraint == 0.0)
+evaluate(invariant::AggregatorInvariant) = ResultDelta(0.0, invariant.current_constraint == 0.0)
 
-eval(invariant::AggregatorInvariant, messages::MultiTypedDAGMessages{<:Delta}) =
-    eval(invariant, sum(messages[ObjectiveDelta]), sum(messages[ConstraintDelta]))
-eval(invariant::AggregatorInvariant, objective::ObjectiveDelta, constraint::ConstraintDelta) =
+evaluate(invariant::AggregatorInvariant, messages::MultiTypedDAGMessages{<:Delta}) =
+    evaluate(invariant, sum(messages[ObjectiveDelta]), sum(messages[ConstraintDelta]))
+evaluate(invariant::AggregatorInvariant, objective::ObjectiveDelta, constraint::ConstraintDelta) =
     ResultDelta(objective.value + constraint.value, iszero(invariant.current_constraint + constraint.value))
 
-eval(invariant::AggregatorInvariant, messages::MultiTypedDAGMessages{<:FullMessage}) =
-    eval(invariant, sum(messages[ObjectiveFullMessage]), sum(messages[ConstraintFullMessage]))
-eval(::AggregatorInvariant, objective::ObjectiveFullMessage, constraint::ConstraintFullMessage) =
+evaluate(invariant::AggregatorInvariant, messages::MultiTypedDAGMessages{<:FullMessage}) =
+    evaluate(invariant, sum(messages[ObjectiveFullMessage]), sum(messages[ConstraintFullMessage]))
+evaluate(::AggregatorInvariant, objective::ObjectiveFullMessage, constraint::ConstraintFullMessage) =
     ResultMessage(objective.value + constraint.value, constraint.value, iszero(constraint.value))
 
 commit!(invariant::AggregatorInvariant, messages::MultiTypedDAGMessages{<:Delta}) =
@@ -34,7 +34,7 @@ commit!(invariant::AggregatorInvariant, messages::MultiTypedDAGMessages{<:Delta}
 
 function init!(invariant::AggregatorInvariant, messages::MultiTypedDAGMessages{<:FullMessage})
     invariant.current_constraint = sum(messages[ConstraintFullMessage]).value
-    return eval(invariant, messages)
+    return evaluate(invariant, messages)
 end
 
 @testitem "Test constructor" begin
@@ -46,10 +46,10 @@ end
 @testitem "Test eval without message" begin
     invariant = JuLS.AggregatorInvariant(10.0)
 
-    @test JuLS.eval(invariant) == JuLS.ResultDelta(0.0, false)
+    @test JuLS.evaluate(invariant) == JuLS.ResultDelta(0.0, false)
 end
 
-@testitem "eval(::FullMessage)" begin
+@testitem "evaluate(::FullMessage)" begin
     invariant = JuLS.AggregatorInvariant()
 
     delta1 = JuLS.ObjectiveFullMessage(10.0)
@@ -62,23 +62,23 @@ end
     push!(lazy_messages, delta2)
     input = JuLS.MultiTypedDAGMessages(lazy_messages)
 
-    @test JuLS.eval(invariant, JuLS.MultiTypedDAGMessages([delta1])) == JuLS.ResultMessage(10.0, 0.0, true)
-    @test JuLS.eval(invariant, JuLS.MultiTypedDAGMessages([delta2])) == JuLS.ResultMessage(2.0, 2.0, false)
-    @test JuLS.eval(invariant, input) == JuLS.ResultMessage(12.0, 2.0, false)
+    @test JuLS.evaluate(invariant, JuLS.MultiTypedDAGMessages([delta1])) == JuLS.ResultMessage(10.0, 0.0, true)
+    @test JuLS.evaluate(invariant, JuLS.MultiTypedDAGMessages([delta2])) == JuLS.ResultMessage(2.0, 2.0, false)
+    @test JuLS.evaluate(invariant, input) == JuLS.ResultMessage(12.0, 2.0, false)
 
     lazy_messages = JuLS.DAGMessage[]
     push!(lazy_messages, delta2)
     push!(lazy_messages, delta4)
     input = JuLS.MultiTypedDAGMessages(lazy_messages)
 
-    @test JuLS.eval(invariant, input) == JuLS.ResultMessage(1.0, 1.0, false)
+    @test JuLS.evaluate(invariant, input) == JuLS.ResultMessage(1.0, 1.0, false)
 
     lazy_messages = JuLS.DAGMessage[]
     push!(lazy_messages, delta1)
     push!(lazy_messages, delta3)
     input = JuLS.MultiTypedDAGMessages(lazy_messages)
 
-    @test JuLS.eval(invariant, input) == JuLS.ResultMessage(8.0, 0.0, true)
+    @test JuLS.evaluate(invariant, input) == JuLS.ResultMessage(8.0, 0.0, true)
 
     delta1 = JuLS.ObjectiveFullMessage(10.0)
     delta2 = JuLS.ConstraintFullMessage(0.0)
@@ -88,8 +88,8 @@ end
     push!(lazy_messages, delta2)
     input = JuLS.MultiTypedDAGMessages(lazy_messages)
 
-    @test JuLS.eval(invariant, JuLS.MultiTypedDAGMessages([delta2])) == JuLS.ResultMessage(0.0, 0.0, true)
-    @test JuLS.eval(invariant, input) == JuLS.ResultMessage(10.0, 0.0, true)
+    @test JuLS.evaluate(invariant, JuLS.MultiTypedDAGMessages([delta2])) == JuLS.ResultMessage(0.0, 0.0, true)
+    @test JuLS.evaluate(invariant, input) == JuLS.ResultMessage(10.0, 0.0, true)
 end
 
 @testitem "Test eval" begin
@@ -103,7 +103,7 @@ end
     push!(lazy_messages, delta2)
     input = JuLS.MultiTypedDAGMessages(lazy_messages)
 
-    @test JuLS.eval(invariant, input) == JuLS.ResultDelta(12.0, false)
+    @test JuLS.evaluate(invariant, input) == JuLS.ResultDelta(12.0, false)
 end
 
 @testitem "Test eval 2" begin
@@ -117,7 +117,7 @@ end
     push!(lazy_messages, delta2)
     input = JuLS.MultiTypedDAGMessages(lazy_messages)
 
-    @test JuLS.eval(invariant, input) == JuLS.ResultDelta(8.0, true)
+    @test JuLS.evaluate(invariant, input) == JuLS.ResultDelta(8.0, true)
 end
 
 @testitem "Test eval 3" begin
@@ -128,22 +128,22 @@ end
     delta3 = JuLS.ObjectiveDelta(-3.0)
     delta4 = JuLS.ConstraintDelta(-1.0e-9)
 
-    @test JuLS.eval(invariant, JuLS.MultiTypedDAGMessages([delta1])) == JuLS.ResultDelta(10.0, true)
-    @test JuLS.eval(invariant, JuLS.MultiTypedDAGMessages([delta2])) == JuLS.ResultDelta(1.0e-9, false)
+    @test JuLS.evaluate(invariant, JuLS.MultiTypedDAGMessages([delta1])) == JuLS.ResultDelta(10.0, true)
+    @test JuLS.evaluate(invariant, JuLS.MultiTypedDAGMessages([delta2])) == JuLS.ResultDelta(1.0e-9, false)
 
     lazy_messages = JuLS.DAGMessage[]
     push!(lazy_messages, delta1)
     push!(lazy_messages, delta3)
     input = JuLS.MultiTypedDAGMessages(lazy_messages)
 
-    @test JuLS.eval(invariant, input) == JuLS.ResultDelta(7.0, true)
+    @test JuLS.evaluate(invariant, input) == JuLS.ResultDelta(7.0, true)
 
     lazy_messages = JuLS.DAGMessage[]
     push!(lazy_messages, delta2)
     push!(lazy_messages, delta4)
     input = JuLS.MultiTypedDAGMessages(lazy_messages)
 
-    @test JuLS.eval(invariant, input) == JuLS.ResultDelta(0.0, true)
+    @test JuLS.evaluate(invariant, input) == JuLS.ResultDelta(0.0, true)
 end
 
 @testitem "Test commit!" begin
@@ -164,13 +164,13 @@ end
 
 @testitem "Testing eval and commit! with no message" begin
     invariant = JuLS.AggregatorInvariant()
-    @test JuLS.eval(invariant, JuLS.NoMessage()) == JuLS.ResultDelta(0.0, true)
+    @test JuLS.evaluate(invariant, JuLS.NoMessage()) == JuLS.ResultDelta(0.0, true)
 
     invariant = JuLS.AggregatorInvariant(10.0)
-    @test JuLS.eval(invariant, JuLS.NoMessage()) == JuLS.ResultDelta(0.0, false)
+    @test JuLS.evaluate(invariant, JuLS.NoMessage()) == JuLS.ResultDelta(0.0, false)
 
     JuLS.commit!(invariant, JuLS.NoMessage())
-    @test JuLS.eval(invariant, JuLS.NoMessage()) == JuLS.ResultDelta(0.0, false)
+    @test JuLS.evaluate(invariant, JuLS.NoMessage()) == JuLS.ResultDelta(0.0, false)
 end
 
 @testitem "init!(::AggregatorInvariant)" begin

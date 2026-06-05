@@ -24,7 +24,7 @@ end
 Constructs a Solution by evaluating decision variables using a DAG evaluator.
 """
 Solution(decision_variables::Array{DecisionVariable}, dag::MoveEvaluator) =
-    Solution(eval(dag, DecisionVariablesArray(decision_variables)))
+    Solution(evaluate(dag, DecisionVariablesArray(decision_variables)))
 DecisionVariablesArray(solution::Solution) = DecisionVariablesArray(generate_decision_variables(solution))
 
 """

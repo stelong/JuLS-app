@@ -21,10 +21,10 @@ To define an invariant in JuLS's CBLS module, the following interface is typical
 1. **`init!(invariant, messages)`**
    Initializes the invariant from its parent variable messages. This sets up the internal state, if any, and returns a message representing the current value.
 
-2. **`eval(invariant, messages)`**
+2. **`evaluate(invariant, messages)`**
    Recomputes the invariant's value given new full values of its parents. This is used when a full evaluation is necessary (e.g., after initialization or full re-evaluation).
 
-3. **`eval(invariant, deltas)`**
+3. **`evaluate(invariant, deltas)`**
    Computes the change ($\delta$) in the invariant’s value when some of its parents change. This allows the solver to assess the impact of a move before committing.
 
 4. **`commit!(invariant, deltas)`**

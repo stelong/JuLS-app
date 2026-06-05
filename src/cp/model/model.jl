@@ -24,7 +24,7 @@ struct CPLSModel
 end
 
 include("apply.jl")
-include("eval.jl")
+include("evaluate.jl")
 
 CPLSModel() = CPLSModel(Trailer())
 

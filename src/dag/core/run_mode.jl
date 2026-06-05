@@ -25,7 +25,7 @@ abstract type CommitableRunMode <: RunMode end
 
 MoveEvaluatorOutput(run_mode::RunMode) = run_mode
 
-eval(dag::DAG, input::MoveEvaluatorInput) = run_dag!(RunMode(input, dag), dag)
+evaluate(dag::DAG, input::MoveEvaluatorInput) = run_dag!(RunMode(input, dag), dag)
 
 
 """
@@ -46,8 +46,8 @@ function commit!(dag::DAG, r::CommitableRunMode)
         commit!(r, invariant(dag, invariant_id), input_messages(r, invariant_id))
     end
 end
-commit!(dag::DAG, input::MoveEvaluatorInput) = commit!(dag, eval(dag, input))
-commit!(dag::DAG, evaluated_move::EvaluatedMove) = commit!(dag, eval(dag, move(evaluated_move)))
+commit!(dag::DAG, input::MoveEvaluatorInput) = commit!(dag, evaluate(dag, input))
+commit!(dag::DAG, evaluated_move::EvaluatedMove) = commit!(dag, evaluate(dag, move(evaluated_move)))
 
 commit!(::CommitableRunMode, invariant::Invariant, message::DAGMessage) = commit!(invariant, message)
 
@@ -63,12 +63,12 @@ output(r::RunMode) = input_messages(r)[end]
 modified_invariants(r::RunMode) = findall(istouched(r))
 
 """
-    eval(r::RunMode, dag::DAG, index::Int)
+    evaluate(r::RunMode, dag::DAG, index::Int)
 
 Evaluates a single invariant in the DAG during execution of a specific run mode.
 """
-eval(r::RunMode, dag::DAG, index::Int) = eval(invariant(dag, index), input_messages(r, index))
-eval(::Invariant, ::NoMessage) = NoMessage()
+evaluate(r::RunMode, dag::DAG, index::Int) = evaluate(invariant(dag, index), input_messages(r, index))
+evaluate(::Invariant, ::NoMessage) = NoMessage()
 
 """
     _set_invariant_touched!(istouched::BitVector, invariant_id::Int)
@@ -162,7 +162,7 @@ function run_dag!(run_mode::RunMode, dag::DAG)
     index = 0
     while (index = findnext(istouched(run_mode), index + 1)) !== nothing
         # Invariant evaluation
-        new_message = eval(run_mode, dag, index)
+        new_message = evaluate(run_mode, dag, index)
 
         # If we identify that we should early stop, let's do it
         if shouldearlystop(new_message, dag)
@@ -191,8 +191,8 @@ end
 
     struct DummyDelta <: JuLS.Delta end
 
-    JuLS.eval(invariant::MockInvariant, deltas::JuLS.DAGMessagesVector) = DummyDelta()
-    JuLS.eval(invariant::MockInvariant, deltas::JuLS.SingleVariableMoveDelta) = DummyDelta()
+    JuLS.evaluate(invariant::MockInvariant, deltas::JuLS.DAGMessagesVector) = DummyDelta()
+    JuLS.evaluate(invariant::MockInvariant, deltas::JuLS.SingleVariableMoveDelta) = DummyDelta()
 
     invariant1 = MockInvariant()
     invariant2 = MockInvariant()
@@ -211,18 +211,18 @@ end
     #           \  /
     #        invariant4
 
-    JuLS.add_invariant!(dag, invariant1; variable_parent_indexes = [1])
-    JuLS.add_invariant!(dag, invariant2; invariant_parent_indexes = [2], name = "2")
-    JuLS.add_invariant!(dag, invariant3; invariant_parent_indexes = [2], name = "3")
-    JuLS.add_invariant!(dag, invariant4; invariant_parent_indexes = [3, 4], name = "4")
+    JuLS.add_invariant!(dag, invariant1; variable_parent_indexes=[1])
+    JuLS.add_invariant!(dag, invariant2; invariant_parent_indexes=[2], name="2")
+    JuLS.add_invariant!(dag, invariant3; invariant_parent_indexes=[2], name="3")
+    JuLS.add_invariant!(dag, invariant4; invariant_parent_indexes=[3, 4], name="4")
 
     JuLS.init!(dag)
 
     dummy_move = JuLS.Move([JuLS.DecisionVariable(1, JuLS.BinaryDecisionValue(1))], [JuLS.BinaryDecisionValue(1)])
 
-    @test JuLS.output(JuLS.eval(dag, dummy_move)) == DummyDelta()
+    @test JuLS.output(JuLS.evaluate(dag, dummy_move)) == DummyDelta()
 
-    @test JuLS.modified_invariants(JuLS.eval(dag, dummy_move)) == [1, 2, 3, 4, 5, 6]
+    @test JuLS.modified_invariants(JuLS.evaluate(dag, dummy_move)) == [1, 2, 3, 4, 5, 6]
 end
 
 @testitem "Testing early stop" begin
@@ -232,11 +232,11 @@ end
 
     struct DummyDelta <: JuLS.Delta end
 
-    function JuLS.eval(invariant::InvariantCounter, t::JuLS.DAGMessagesVector)
+    function JuLS.evaluate(invariant::InvariantCounter, t::JuLS.DAGMessagesVector)
         invariant.count += 1
         return JuLS.ConstraintDelta(1000)
     end
-    function JuLS.eval(
+    function JuLS.evaluate(
         invariant::InvariantCounter,
         ::JuLS.DAGMessagesVector{JuLS.SingleVariableMoveDelta{JuLS.BinaryDecisionValue}},
     )
@@ -261,15 +261,15 @@ end
     #           \  /
     #        invariant4
 
-    JuLS.add_invariant!(dag, invariant1; variable_parent_indexes = [1])
-    JuLS.add_invariant!(dag, invariant2; invariant_parent_indexes = [2])
-    JuLS.add_invariant!(dag, invariant3; invariant_parent_indexes = [2])
-    JuLS.add_invariant!(dag, invariant4; invariant_parent_indexes = [3, 4])
+    JuLS.add_invariant!(dag, invariant1; variable_parent_indexes=[1])
+    JuLS.add_invariant!(dag, invariant2; invariant_parent_indexes=[2])
+    JuLS.add_invariant!(dag, invariant3; invariant_parent_indexes=[2])
+    JuLS.add_invariant!(dag, invariant4; invariant_parent_indexes=[3, 4])
 
     JuLS.init!(dag)
 
     dummy_move = JuLS.Move([JuLS.DecisionVariable(1, JuLS.BinaryDecisionValue(1))], [JuLS.BinaryDecisionValue(1)])
-    result = JuLS.eval(dag, dummy_move)
+    result = JuLS.evaluate(dag, dummy_move)
 
     @test isa(result, JuLS.DeltaRun)
     @test JuLS.output(result) == JuLS.ResultDelta(typemax(Float64), false)
@@ -293,15 +293,15 @@ end
 
     struct DummyDelta <: JuLS.Delta end
 
-    function JuLS.eval(invariant::InvariantCounter, ::DummyDelta)
+    function JuLS.evaluate(invariant::InvariantCounter, ::DummyDelta)
         invariant.count += 1
         return JuLS.ConstraintDelta(JuLS.EARLY_STOP_CONSTRAINT_THRESHOLD - 1)
     end
-    function JuLS.eval(invariant::InvariantCounter, ::JuLS.DAGMessagesVector)
+    function JuLS.evaluate(invariant::InvariantCounter, ::JuLS.DAGMessagesVector)
         invariant.count += 1
         return JuLS.ConstraintDelta(JuLS.EARLY_STOP_CONSTRAINT_THRESHOLD - 1)
     end
-    function JuLS.eval(invariant::InvariantCounter, ::JuLS.SingleVariableMoveDelta)
+    function JuLS.evaluate(invariant::InvariantCounter, ::JuLS.SingleVariableMoveDelta)
         invariant.count += 1
         return DummyDelta()
     end
@@ -323,15 +323,15 @@ end
     #           \  /
     #        invariant4
 
-    JuLS.add_invariant!(dag, invariant1; variable_parent_indexes = [1])
-    JuLS.add_invariant!(dag, invariant2; invariant_parent_indexes = [2])
-    JuLS.add_invariant!(dag, invariant3; invariant_parent_indexes = [2])
-    JuLS.add_invariant!(dag, invariant4; invariant_parent_indexes = [3, 4])
+    JuLS.add_invariant!(dag, invariant1; variable_parent_indexes=[1])
+    JuLS.add_invariant!(dag, invariant2; invariant_parent_indexes=[2])
+    JuLS.add_invariant!(dag, invariant3; invariant_parent_indexes=[2])
+    JuLS.add_invariant!(dag, invariant4; invariant_parent_indexes=[3, 4])
 
     JuLS.init!(dag)
 
     dummy_move = JuLS.Move([JuLS.DecisionVariable(1, JuLS.BinaryDecisionValue(1))], [JuLS.BinaryDecisionValue(1)])
-    @test JuLS.output(JuLS.eval(dag, dummy_move)) == JuLS.ConstraintDelta(JuLS.EARLY_STOP_CONSTRAINT_THRESHOLD - 1)
+    @test JuLS.output(JuLS.evaluate(dag, dummy_move)) == JuLS.ConstraintDelta(JuLS.EARLY_STOP_CONSTRAINT_THRESHOLD - 1)
 
     # We check that all invariants got called: no early stop since it is below the threshold
     @test invariant1.count == 1

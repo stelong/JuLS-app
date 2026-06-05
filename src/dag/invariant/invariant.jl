@@ -8,20 +8,20 @@ Abstract type representing invariants in optimization problems. Each concrete in
 
 # Required Method Implementations
     
-- eval(invariant::YourInvariant, delta::Delta)
-- eval(invariant::YourInvariant, message::FullMessage)
+- evaluate(invariant::YourInvariant, delta::Delta)
+- evaluate(invariant::YourInvariant, message::FullMessage)
 - commit!(invariant::YourInvariant, delta::Delta) (except for stateless invariant)
 - init!(invariant::YourInvariant, message::FullMessage) (except for stateless invariant)
 
 1. Delta Evaluation:
-   - eval(invariant, delta::Delta)
+   - evaluate(invariant, delta::Delta)
    - Purpose: Evaluates impact of changes without full recomputation
    - Called during optimization for move evaluation
    - Must be efficient as called frequently
    - Returns: Delta representing impact of changes
 
 2. Full Evaluation:
-   - eval(invariant, message::FullMessage)
+   - evaluate(invariant, message::FullMessage)
    - Purpose: Evaluates a complete solution for the invariant
    - Used for validation and verification, must not use the invariant state !!!
    - Can be more computationally intensive
@@ -53,7 +53,7 @@ commit!(::StatelessInvariant, ::DAGMessage) = nothing
 Invariant subtype for which evaluating a vector is the sum of single evaluations.
 """
 abstract type SummableEvalInvariant <: Invariant end
-eval(invariant::SummableEvalInvariant, messages::DAGMessagesVector) = sum([eval(invariant, m) for m in messages])
+evaluate(invariant::SummableEvalInvariant, messages::DAGMessagesVector) = sum([evaluate(invariant, m) for m in messages])
 function commit!(invariant::SummableEvalInvariant, messages::DAGMessagesVector)
     for m in messages
         commit!(invariant, m)
@@ -66,7 +66,7 @@ end
 Invariant subtype for which evaluating a vector is the evaluation of the sum of messages.
 """
 abstract type SummableDeltaInvariant <: Invariant end
-eval(invariant::SummableDeltaInvariant, messages::DAGMessagesVector) = eval(invariant, sum(messages))
+evaluate(invariant::SummableDeltaInvariant, messages::DAGMessagesVector) = evaluate(invariant, sum(messages))
 commit!(invariant::SummableDeltaInvariant, messages::DAGMessagesVector) = commit!(invariant, sum(messages))
 init!(invariant::SummableDeltaInvariant, messages::DAGMessagesVector) = init!(invariant, sum(messages))
 

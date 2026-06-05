@@ -41,18 +41,18 @@ A DAG object representing the TSP problem structure
   * ObjectiveInvariant: Sums distances
   * AggregatorInvariant: Combines constraints
 """
-function create_tsp_dag(distance_matrix::Matrix{<:Number}, α::Float64 = DEFAULT_PENALTY_PARAM)
+function create_tsp_dag(distance_matrix::Matrix{<:Number}, α::Float64=DEFAULT_PENALTY_PARAM)
     n = size(distance_matrix)[1]
     dag = DAG(n)
 
     alldiff_id = add_invariant!(
         dag,
         AllDifferentInvariant(n);
-        variable_parent_indexes = collect(1:n),
-        name = "all_diff_invariant",
+        variable_parent_indexes=collect(1:n),
+        name="all_diff_invariant",
     )
 
-    constraint_id = add_invariant!(dag, StaticConstraintInvariant(α); invariant_parent_indexes = [alldiff_id])
+    constraint_id = add_invariant!(dag, StaticConstraintInvariant(α); invariant_parent_indexes=[alldiff_id])
 
     distance_ids = Int[]
     for i = 1:n
@@ -60,23 +60,23 @@ function create_tsp_dag(distance_matrix::Matrix{<:Number}, α::Float64 = DEFAULT
             is_consecutive_id = add_invariant!(
                 dag,
                 ConsecutiveInvariant(1, n);
-                variable_parent_indexes = [i, j],
-                name = "is_consecutive_$(i)_$(j)",
+                variable_parent_indexes=[i, j],
+                name="is_consecutive_$(i)_$(j)",
             )
             push!(
                 distance_ids,
                 add_invariant!(
                     dag,
                     ScaleInvariant(distance_matrix[i, j]);
-                    invariant_parent_indexes = [is_consecutive_id],
+                    invariant_parent_indexes=[is_consecutive_id],
                 ),
             )
         end
     end
     obj_id =
-        add_invariant!(dag, ObjectiveInvariant(); invariant_parent_indexes = distance_ids, name = "objective_invariant")
+        add_invariant!(dag, ObjectiveInvariant(); invariant_parent_indexes=distance_ids, name="objective_invariant")
 
-    add_invariant!(dag, AggregatorInvariant(); invariant_parent_indexes = [constraint_id, obj_id])
+    add_invariant!(dag, AggregatorInvariant(); invariant_parent_indexes=[constraint_id, obj_id])
 
     return dag
 end
@@ -95,7 +95,7 @@ end
 
     move = JuLS.Move(decision_variables[[1, 2]], [JuLS.IntDecisionValue(2), JuLS.IntDecisionValue(1)])
 
-    evaluated_move = JuLS.eval(dag, move)
+    evaluated_move = JuLS.evaluate(dag, move)
 
     @test JuLS.delta_obj(evaluated_move) == -3
     @test JuLS.isfeasible(evaluated_move)
@@ -116,7 +116,7 @@ end
 
     move = JuLS.Move(decision_variables[[1, 2]], [JuLS.IntDecisionValue(3), JuLS.IntDecisionValue(1)])
 
-    evaluated_move = JuLS.eval(dag, move)
+    evaluated_move = JuLS.evaluate(dag, move)
 
     @test JuLS.delta_obj(evaluated_move) == Inf
     @test !JuLS.isfeasible(evaluated_move)
@@ -137,10 +137,10 @@ end
 
     move = JuLS.Move(decision_variables[[1, 2]], [JuLS.IntDecisionValue(2), JuLS.IntDecisionValue(1)])
 
-    JuLS.commit!(dag, JuLS.eval(dag, move))
+    JuLS.commit!(dag, JuLS.evaluate(dag, move))
 
     evaluated_move =
-        JuLS.eval(dag, JuLS.Move(decision_variables[[1, 2]], [JuLS.IntDecisionValue(1), JuLS.IntDecisionValue(2)]))
+        JuLS.evaluate(dag, JuLS.Move(decision_variables[[1, 2]], [JuLS.IntDecisionValue(1), JuLS.IntDecisionValue(2)]))
 
     @test JuLS.delta_obj(evaluated_move) == 3
     @test JuLS.isfeasible(evaluated_move)
@@ -160,9 +160,9 @@ end
 
     move = JuLS.Move(decision_variables[[1, 2]], [JuLS.IntDecisionValue(3), JuLS.IntDecisionValue(1)])
 
-    @test_throws ErrorException JuLS.commit!(dag, JuLS.eval(dag, move)) # Infeasible move that caused an early stop
+    @test_throws ErrorException JuLS.commit!(dag, JuLS.evaluate(dag, move)) # Infeasible move that caused an early stop
 
-    evaluated_move = JuLS.eval(dag, move) # So the move is still infeasible
+    evaluated_move = JuLS.evaluate(dag, move) # So the move is still infeasible
 
     @test JuLS.delta_obj(evaluated_move) == Inf
     @test !JuLS.isfeasible(evaluated_move)
@@ -180,7 +180,7 @@ end
     decision_variables = [JuLS.DecisionVariable(i, JuLS.IntDecisionValue(i)) for i = 1:4]
     JuLS.init!(dag, JuLS.DecisionVariablesArray(decision_variables))
 
-    solution1 = JuLS.Solution(JuLS.eval(dag, JuLS.DecisionVariablesArray(decision_variables)))
+    solution1 = JuLS.Solution(JuLS.evaluate(dag, JuLS.DecisionVariablesArray(decision_variables)))
 
     @test solution1.values == [JuLS.IntDecisionValue(i) for i = 1:4]
     @test solution1.objective == 21
@@ -188,7 +188,7 @@ end
 
     position = [3, 1, 4, 2]
     decision_variables = [JuLS.DecisionVariable(i, JuLS.IntDecisionValue(position[i])) for i = 1:4]
-    solution2 = JuLS.Solution(JuLS.eval(dag, JuLS.DecisionVariablesArray(decision_variables)))
+    solution2 = JuLS.Solution(JuLS.evaluate(dag, JuLS.DecisionVariablesArray(decision_variables)))
 
 
     @test solution2.values ==
@@ -211,12 +211,12 @@ end
     decision_variables = [JuLS.DecisionVariable(i, JuLS.IntDecisionValue(position[i])) for i = 1:4]
     JuLS.init!(dag, JuLS.DecisionVariablesArray(decision_variables))
 
-    solution1 = JuLS.Solution(JuLS.eval(dag, JuLS.DecisionVariablesArray(decision_variables)))
+    solution1 = JuLS.Solution(JuLS.evaluate(dag, JuLS.DecisionVariablesArray(decision_variables)))
 
     dag2 = JuLS.create_tsp_dag(distance_matrix, 0.0)
     JuLS.init!(dag2, JuLS.DecisionVariablesArray(decision_variables))
 
-    solution2 = JuLS.Solution(JuLS.eval(dag2, JuLS.DecisionVariablesArray(decision_variables)))
+    solution2 = JuLS.Solution(JuLS.evaluate(dag2, JuLS.DecisionVariablesArray(decision_variables)))
 
     @test solution1.objective == 22 # 12 + alpha (1 violation)
     @test solution2.objective == 12

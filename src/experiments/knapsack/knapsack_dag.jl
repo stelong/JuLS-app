@@ -54,7 +54,7 @@ A DAG object representing the Knapsack problem structure
   * StaticConstraintInvariant: Applies penalty for violations
   * AggregatorInvariant: Combines objective and constraint
 """
-function create_knapsack_dag(weights::Array{Int}, values::Array{Int}, capacity::Int, α::Float64 = DEFAULT_PENALTY_PARAM)
+function create_knapsack_dag(weights::Array{Int}, values::Array{Int}, capacity::Int, α::Float64=DEFAULT_PENALTY_PARAM)
     n_items = length(weights)
 
     dag = DAG(n_items)
@@ -62,24 +62,24 @@ function create_knapsack_dag(weights::Array{Int}, values::Array{Int}, capacity::
     cost_nodes = zeros(Int, n_items)
     weight_nodes = zeros(Int, n_items)
     for i = 1:n_items
-        cost_nodes[i] = add_invariant!(dag, ScaleInvariant(-values[i]); variable_parent_indexes = [i])
+        cost_nodes[i] = add_invariant!(dag, ScaleInvariant(-values[i]); variable_parent_indexes=[i])
         weight_nodes[i] =
-            add_invariant!(dag, ScaleInvariant(weights[i]); variable_parent_indexes = [i], using_cp = true)
+            add_invariant!(dag, ScaleInvariant(weights[i]); variable_parent_indexes=[i], using_cp=true)
     end
     obj_node =
-        add_invariant!(dag, ObjectiveInvariant(); name = "objective_value", invariant_parent_indexes = cost_nodes)
+        add_invariant!(dag, ObjectiveInvariant(); name="objective_value", invariant_parent_indexes=cost_nodes)
 
     capacity_node = add_invariant!(
         dag,
         ComparatorInvariant(capacity);
-        name = "constraint_violation",
-        invariant_parent_indexes = weight_nodes,
-        using_cp = true,
+        name="constraint_violation",
+        invariant_parent_indexes=weight_nodes,
+        using_cp=true,
     )
 
-    constraint_node = add_invariant!(dag, StaticConstraintInvariant(α); invariant_parent_indexes = [capacity_node])
+    constraint_node = add_invariant!(dag, StaticConstraintInvariant(α); invariant_parent_indexes=[capacity_node])
 
-    add_invariant!(dag, AggregatorInvariant(); invariant_parent_indexes = [constraint_node, obj_node])
+    add_invariant!(dag, AggregatorInvariant(); invariant_parent_indexes=[constraint_node, obj_node])
 
     return dag
 end
@@ -93,7 +93,7 @@ end
 
     move = JuLS.Move([var1, var2], [JuLS.BinaryDecisionValue(true), JuLS.BinaryDecisionValue(true)])
 
-    evaluated_move = JuLS.eval(dag, move)
+    evaluated_move = JuLS.evaluate(dag, move)
 
     @test JuLS.delta_obj(evaluated_move) == -7
     @test JuLS.isfeasible(evaluated_move)
@@ -109,7 +109,7 @@ end
 
     move = JuLS.Move([var1, var2], [JuLS.BinaryDecisionValue(true), JuLS.BinaryDecisionValue(true)])
 
-    evaluated_move = JuLS.eval(dag, move)
+    evaluated_move = JuLS.evaluate(dag, move)
 
     @test JuLS.delta_obj(evaluated_move) == Inf
     @test !JuLS.isfeasible(evaluated_move)
@@ -126,12 +126,12 @@ end
 
     move = JuLS.Move([var1, var2], [JuLS.BinaryDecisionValue(true), JuLS.BinaryDecisionValue(true)])
 
-    JuLS.commit!(dag, JuLS.eval(dag, move))
+    JuLS.commit!(dag, JuLS.evaluate(dag, move))
     var1 = JuLS.DecisionVariable(1, JuLS.BinaryDecisionValue(true))
     var2 = JuLS.DecisionVariable(2, JuLS.BinaryDecisionValue(true))
 
     evaluated_move =
-        JuLS.eval(dag, JuLS.Move([var1, var2], [JuLS.BinaryDecisionValue(false), JuLS.BinaryDecisionValue(false)]))
+        JuLS.evaluate(dag, JuLS.Move([var1, var2], [JuLS.BinaryDecisionValue(false), JuLS.BinaryDecisionValue(false)]))
 
     @test JuLS.delta_obj(evaluated_move) == 7
     @test JuLS.isfeasible(evaluated_move)
@@ -148,9 +148,9 @@ end
     move = JuLS.Move([var1, var2], [JuLS.BinaryDecisionValue(true), JuLS.BinaryDecisionValue(true)])
 
 
-    @test_throws ErrorException JuLS.commit!(dag, JuLS.eval(dag, move)) # Infeasible move that caused an early stop
+    @test_throws ErrorException JuLS.commit!(dag, JuLS.evaluate(dag, move)) # Infeasible move that caused an early stop
 
-    evaluated_move = JuLS.eval(dag, move) # So the move is still infeasible
+    evaluated_move = JuLS.evaluate(dag, move) # So the move is still infeasible
 
 
     @test JuLS.delta_obj(evaluated_move) == Inf
@@ -166,7 +166,7 @@ end
     var3 = JuLS.DecisionVariable(3, JuLS.BinaryDecisionValue(false))
     JuLS.init!(dag, JuLS.DecisionVariablesArray([var1, var2, var3]))
 
-    solution1 = JuLS.Solution(JuLS.eval(dag, JuLS.DecisionVariablesArray(JuLS.DecisionVariable[var1, var2, var3])))
+    solution1 = JuLS.Solution(JuLS.evaluate(dag, JuLS.DecisionVariablesArray(JuLS.DecisionVariable[var1, var2, var3])))
 
     @test solution1.values ==
           [JuLS.BinaryDecisionValue(false), JuLS.BinaryDecisionValue(true), JuLS.BinaryDecisionValue(false)]
@@ -174,7 +174,7 @@ end
     @test solution1.feasible
 
     var3 = JuLS.DecisionVariable(3, JuLS.BinaryDecisionValue(true))
-    solution2 = JuLS.Solution(JuLS.eval(dag, JuLS.DecisionVariablesArray(JuLS.DecisionVariable[var1, var2, var3])))
+    solution2 = JuLS.Solution(JuLS.evaluate(dag, JuLS.DecisionVariablesArray(JuLS.DecisionVariable[var1, var2, var3])))
 
     @test solution2.values ==
           [JuLS.BinaryDecisionValue(false), JuLS.BinaryDecisionValue(true), JuLS.BinaryDecisionValue(true)]
@@ -192,12 +192,12 @@ end
     dag1 = JuLS.create_knapsack_dag([1, 2, 3], [3, 4, 5], 2)
     JuLS.init!(dag1, JuLS.DecisionVariablesArray([var1, var2, var3]))
 
-    solution1 = JuLS.Solution(JuLS.eval(dag1, JuLS.DecisionVariablesArray(JuLS.DecisionVariable[var1, var2, var3])))
+    solution1 = JuLS.Solution(JuLS.evaluate(dag1, JuLS.DecisionVariablesArray(JuLS.DecisionVariable[var1, var2, var3])))
 
     dag2 = JuLS.create_knapsack_dag([1, 2, 3], [3, 4, 5], 2, 0.0)
     JuLS.init!(dag2, JuLS.DecisionVariablesArray([var1, var2, var3]))
 
-    solution2 = JuLS.Solution(JuLS.eval(dag2, JuLS.DecisionVariablesArray(JuLS.DecisionVariable[var1, var2, var3])))
+    solution2 = JuLS.Solution(JuLS.evaluate(dag2, JuLS.DecisionVariablesArray(JuLS.DecisionVariable[var1, var2, var3])))
 
     @test solution1.objective == 3 # -3-4+alpha*max(0,2+1-capacity)
     @test solution2.objective == -7

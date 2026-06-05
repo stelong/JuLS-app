@@ -4,10 +4,10 @@
 const DEFAULT_TIME_LIMIT = 10
 
 """
-    eval(model::CPLSModel, solution::Vector{Int}, decision_relaxed::Vector{Int})
+    evaluate(model::CPLSModel, solution::Vector{Int}, decision_relaxed::Vector{Int})
 Return all the feasible solutions if we relaxed all decision variables indexed by decision_relaxed and fix the other ones to the values in solution.
 """
-function eval(model::CPLSModel, solution::Vector{Int}, decision_relaxed::Vector{Int})
+function evaluate(model::CPLSModel, solution::Vector{Int}, decision_relaxed::Vector{Int})
 
     cp_run = init_cp_run(model, decision_relaxed)
     init!(cp_run.time_limit, DEFAULT_TIME_LIMIT)
@@ -76,7 +76,7 @@ function reset_on_domain_change!(variables::Vector{CPVariableContext})
 end
 
 
-@testitem "eval(::CPLSModel)" begin
+@testitem "evaluate(::CPLSModel)" begin
     trailer = JuLS.Trailer()
     x = Vector{JuLS.BoolVariable}(undef, 8)
     for i = 1:8
@@ -99,7 +99,7 @@ end
 
     current_solution = zeros(Int, 8)
 
-    solutions = JuLS.eval(model, current_solution, decision_relaxed)
+    solutions = JuLS.evaluate(model, current_solution, decision_relaxed)
 
     @test solutions == [[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 0, 0]]
 

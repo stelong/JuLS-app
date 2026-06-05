@@ -26,16 +26,16 @@ function init!(invariant::MaximumInvariant, messages::DAGMessagesVector{SingleVa
     for m in messages
         invariant.current_value_counter[m.value.value] += 1
     end
-    output_message = eval(invariant, messages)
+    output_message = evaluate(invariant, messages)
     invariant.current_max = Int(output_message.value)
     return output_message
 end
 
-eval(::MaximumInvariant, messages::DAGMessagesVector{SingleVariableMessage{IntDecisionValue}}) =
+evaluate(::MaximumInvariant, messages::DAGMessagesVector{SingleVariableMessage{IntDecisionValue}}) =
     FloatFullMessage(maximum([m.value.value for m in messages]))
 
 """
-    eval(invariant::MaximumInvariant, deltas::DAGMessagesVector{SingleVariableMoveDelta{IntDecisionValue}})
+    evaluate(invariant::MaximumInvariant, deltas::DAGMessagesVector{SingleVariableMoveDelta{IntDecisionValue}})
 
 Evaluates the change in maximum value based on proposed changes to input variables.
 
@@ -47,7 +47,7 @@ Evaluates the change in maximum value based on proposed changes to input variabl
    - Find new maximum by decrementing from current maximum until finding a non-zero count
    - Return difference between new maximum and current maximum
 """
-function eval(invariant::MaximumInvariant, deltas::DAGMessagesVector{SingleVariableMoveDelta{IntDecisionValue}})
+function evaluate(invariant::MaximumInvariant, deltas::DAGMessagesVector{SingleVariableMoveDelta{IntDecisionValue}})
     new_delta_max = maximum([δ.new_value.value for δ in deltas])
     if new_delta_max >= invariant.current_max
         return FloatDelta(new_delta_max - invariant.current_max)
@@ -65,7 +65,7 @@ function eval(invariant::MaximumInvariant, deltas::DAGMessagesVector{SingleVaria
 end
 
 function commit!(invariant::MaximumInvariant, deltas::DAGMessagesVector{SingleVariableMoveDelta{IntDecisionValue}})
-    invariant.current_max += Int(eval(invariant, deltas).value)
+    invariant.current_max += Int(evaluate(invariant, deltas).value)
     for δ in deltas
         invariant.current_value_counter[δ.current_value.value] -= 1
         invariant.current_value_counter[δ.new_value.value] += 1
@@ -86,7 +86,7 @@ end
     @test output_message.value == 8
 end
 
-@testitem "eval(::MaximumInvariant, ::FullMessage)" begin
+@testitem "evaluate(::MaximumInvariant, ::FullMessage)" begin
     max_value = 10
     invariant = JuLS.MaximumInvariant(max_value)
 
@@ -94,11 +94,11 @@ end
     n = length(values)
     messages = JuLS.DAGMessagesVector([JuLS.SingleVariableMessage(i, values[i]) for i = 1:n])
 
-    output_message = JuLS.eval(invariant, messages)
+    output_message = JuLS.evaluate(invariant, messages)
     @test output_message.value == 8
 end
 
-@testitem "eval(::MaximumInvariant, ::Delta)" begin
+@testitem "evaluate(::MaximumInvariant, ::Delta)" begin
     max_value = 10
     invariant = JuLS.MaximumInvariant(max_value)
 
@@ -109,7 +109,7 @@ end
 
     #Increase maximum
     deltas1 = JuLS.DAGMessagesVector([JuLS.SingleVariableMoveDelta(1, values[1], 10)])
-    output_delta = JuLS.eval(invariant, deltas1)
+    output_delta = JuLS.evaluate(invariant, deltas1)
     @test output_delta.value == 2
 
     #Decrease maximum 1
@@ -117,7 +117,7 @@ end
         JuLS.SingleVariableMoveDelta(1, values[1], 4),
         JuLS.SingleVariableMoveDelta(2, values[2], 4),
     ])
-    output_delta = JuLS.eval(invariant, deltas2)
+    output_delta = JuLS.evaluate(invariant, deltas2)
     @test output_delta.value == 0
 
     #Decrease maximum 2
@@ -127,7 +127,7 @@ end
         JuLS.SingleVariableMoveDelta(3, values[3], 4),
     ])
 
-    output_delta = JuLS.eval(invariant, deltas3)
+    output_delta = JuLS.evaluate(invariant, deltas3)
     @test output_delta.value == -4 # new max is 4
 end
 

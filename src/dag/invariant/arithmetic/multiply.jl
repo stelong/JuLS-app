@@ -19,10 +19,10 @@ MultiplyInvariant() = MultiplyInvariant(1, 0)
 
 InputType(::MultiplyInvariant) = MultiType()
 
-eval(::MultiplyInvariant, messages::MultiTypedDAGMessages{<:FullMessage}) =
-    FloatFullMessage(prod([Float64(m.value.value) for m in all_messages(messages)]; init = 1.0))
+evaluate(::MultiplyInvariant, messages::MultiTypedDAGMessages{<:FullMessage}) =
+    FloatFullMessage(prod([Float64(m.value.value) for m in all_messages(messages)]; init=1.0))
 
-function eval(invariant::MultiplyInvariant, deltas::MultiTypedDAGMessages{<:Delta})
+function evaluate(invariant::MultiplyInvariant, deltas::MultiTypedDAGMessages{<:Delta})
     deltas = all_messages(deltas)
     current_value = invariant.nb_zeros > 0 ? 0 : invariant.non_null_product
 
@@ -31,8 +31,8 @@ function eval(invariant::MultiplyInvariant, deltas::MultiTypedDAGMessages{<:Delt
     end
 
     new_value =
-        invariant.non_null_product * prod([Float64(δ.new_value.value) for δ in deltas]; init = 1.0) /
-        prod([Float64(δ.current_value.value) for δ in deltas if !iszero(δ.current_value.value)]; init = 1.0)
+        invariant.non_null_product * prod([Float64(δ.new_value.value) for δ in deltas]; init=1.0) /
+        prod([Float64(δ.current_value.value) for δ in deltas if !iszero(δ.current_value.value)]; init=1.0)
 
     return FloatDelta(new_value - current_value)
 end
@@ -42,15 +42,15 @@ function commit!(invariant::MultiplyInvariant, deltas::MultiTypedDAGMessages{<:D
     invariant.nb_zeros += get_nb_zeros(deltas)
 
     invariant.non_null_product *=
-        prod([Float64(δ.new_value.value) for δ in deltas if !iszero(δ.new_value.value)]; init = 1.0) /
-        prod([Float64(δ.current_value.value) for δ in deltas if !iszero(δ.current_value.value)]; init = 1.0)
+        prod([Float64(δ.new_value.value) for δ in deltas if !iszero(δ.new_value.value)]; init=1.0) /
+        prod([Float64(δ.current_value.value) for δ in deltas if !iszero(δ.current_value.value)]; init=1.0)
 end
 
 function init!(invariant::MultiplyInvariant, messages::MultiTypedDAGMessages)
     messages = all_messages(messages)
     @assert all(m -> isa(m, SingleVariableMessage), messages) "All input variables for MultiplyInvariant must be SingleVariableMessage"
     invariant.nb_zeros = sum(iszero(m.value.value) for m in messages)
-    invariant.non_null_product = prod([Float64(m.value.value) for m in messages if !iszero(m.value.value)]; init = 1.0)
+    invariant.non_null_product = prod([Float64(m.value.value) for m in messages if !iszero(m.value.value)]; init=1.0)
     return FloatFullMessage(invariant.nb_zeros > 0 ? 0 : invariant.non_null_product)
 end
 
@@ -72,7 +72,7 @@ get_nb_zeros(deltas::Vector{SingleVariableMoveDelta}) =
     @test invariant.nb_zeros == 2
 end
 
-@testitem "eval(::MultiplyInvariant, :FullMessage)" begin
+@testitem "evaluate(::MultiplyInvariant, :FullMessage)" begin
     invariant = JuLS.MultiplyInvariant()
 
     m1 = JuLS.SingleVariableMessage(false)
@@ -81,16 +81,16 @@ end
     m4 = JuLS.SingleVariableMessage(5)
 
     messages = JuLS.MultiTypedDAGMessages([m1, m2, m3, m4])
-    @test JuLS.eval(invariant, messages) == JuLS.FloatFullMessage(0)
+    @test JuLS.evaluate(invariant, messages) == JuLS.FloatFullMessage(0)
 
     messages = JuLS.MultiTypedDAGMessages([m2, m4])
-    @test JuLS.eval(invariant, messages) == JuLS.FloatFullMessage(20)
+    @test JuLS.evaluate(invariant, messages) == JuLS.FloatFullMessage(20)
 
     messages = JuLS.MultiTypedDAGMessages([m1, m2, m4])
-    @test JuLS.eval(invariant, messages) == JuLS.FloatFullMessage(0)
+    @test JuLS.evaluate(invariant, messages) == JuLS.FloatFullMessage(0)
 end
 
-@testitem "eval(::MultiplyInvariant, :Delta)" begin
+@testitem "evaluate(::MultiplyInvariant, :Delta)" begin
     invariant = JuLS.MultiplyInvariant(10, 2)
 
     δ1 = JuLS.SingleVariableMoveDelta(false, true)
@@ -99,16 +99,16 @@ end
     δ4 = JuLS.SingleVariableMoveDelta(5, 0)
 
     deltas = JuLS.MultiTypedDAGMessages([δ1, δ2, δ3, δ4])
-    @test JuLS.eval(invariant, deltas) == JuLS.FloatDelta(0.0)
+    @test JuLS.evaluate(invariant, deltas) == JuLS.FloatDelta(0.0)
 
     deltas = JuLS.MultiTypedDAGMessages([δ1, δ2, δ3])
-    @test JuLS.eval(invariant, deltas) == JuLS.FloatDelta(12)
+    @test JuLS.evaluate(invariant, deltas) == JuLS.FloatDelta(12)
 
     deltas = JuLS.MultiTypedDAGMessages([δ1, δ2])
-    @test JuLS.eval(invariant, deltas) == JuLS.FloatDelta(0.0)
+    @test JuLS.evaluate(invariant, deltas) == JuLS.FloatDelta(0.0)
 
     deltas = JuLS.MultiTypedDAGMessages([δ1, δ3])
-    @test JuLS.eval(invariant, deltas) == JuLS.FloatDelta(30)
+    @test JuLS.evaluate(invariant, deltas) == JuLS.FloatDelta(30)
 end
 
 @testitem "commit!(::MultiplyInvariant, :Delta)" begin

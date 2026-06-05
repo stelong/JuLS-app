@@ -34,13 +34,13 @@ function init!(invariant::ConsecutiveInvariant, messages::DAGMessagesVector{Sing
     return FloatFullMessage(invariant.current_output)
 end
 
-eval(invariant::ConsecutiveInvariant, messages::DAGMessagesVector{SingleVariableMessage{IntDecisionValue}}) =
+evaluate(invariant::ConsecutiveInvariant, messages::DAGMessagesVector{SingleVariableMessage{IntDecisionValue}}) =
     FloatFullMessage(
         is_consecutive(invariant.min_value, invariant.max_value, messages[1].value.value, messages[2].value.value),
     )
 
 
-function eval(invariant::ConsecutiveInvariant, deltas::DAGMessagesVector{SingleVariableMoveDelta{IntDecisionValue}})
+function evaluate(invariant::ConsecutiveInvariant, deltas::DAGMessagesVector{SingleVariableMoveDelta{IntDecisionValue}})
     new_values = deepcopy(invariant.current_values)
     for δ in deltas
         new_values[δ.index] = δ.new_value.value
@@ -94,21 +94,21 @@ end
     @test invariant.current_output == false
 end
 
-@testitem "eval(::ConsecutiveInvariant, ::FullMessage)" begin
+@testitem "evaluate(::ConsecutiveInvariant, ::FullMessage)" begin
     n = 10
     invariant = JuLS.ConsecutiveInvariant(1, n)
 
     messages = JuLS.DAGMessagesVector([JuLS.SingleVariableMessage(3, 1), JuLS.SingleVariableMessage(5, 8)])
-    @test JuLS.eval(invariant, messages).value == 0
+    @test JuLS.evaluate(invariant, messages).value == 0
 
     messages = JuLS.DAGMessagesVector([JuLS.SingleVariableMessage(3, 2), JuLS.SingleVariableMessage(5, 1)])
-    @test JuLS.eval(invariant, messages).value == 1
+    @test JuLS.evaluate(invariant, messages).value == 1
 
     messages = JuLS.DAGMessagesVector([JuLS.SingleVariableMessage(3, 10), JuLS.SingleVariableMessage(5, 1)])
-    @test JuLS.eval(invariant, messages).value == 1
+    @test JuLS.evaluate(invariant, messages).value == 1
 end
 
-@testitem "eval(::ConsecutiveInvariant, ::Delta)" begin
+@testitem "evaluate(::ConsecutiveInvariant, ::Delta)" begin
     n = 10
     invariant = JuLS.ConsecutiveInvariant(1, n)
 
@@ -116,16 +116,16 @@ end
     JuLS.init!(invariant, messages)
 
     input_delta = JuLS.DAGMessagesVector([JuLS.SingleVariableMoveDelta(3, 1, 9)])
-    output_delta = JuLS.eval(invariant, input_delta)
+    output_delta = JuLS.evaluate(invariant, input_delta)
     @test output_delta.value == 1
 
     input_delta = JuLS.DAGMessagesVector([JuLS.SingleVariableMoveDelta(3, 1, 4)])
-    output_delta = JuLS.eval(invariant, input_delta)
+    output_delta = JuLS.evaluate(invariant, input_delta)
     @test output_delta.value == 0
 
     input_delta =
         JuLS.DAGMessagesVector([JuLS.SingleVariableMoveDelta(3, 1, 10), JuLS.SingleVariableMoveDelta(5, 8, 1)])
-    output_delta = JuLS.eval(invariant, input_delta)
+    output_delta = JuLS.evaluate(invariant, input_delta)
     @test output_delta.value == 1
 end
 
@@ -143,6 +143,6 @@ end
     @test invariant.current_output == true
 
     input_delta = JuLS.DAGMessagesVector([JuLS.SingleVariableMoveDelta(3, 1, 4)])
-    output_delta = JuLS.eval(invariant, input_delta)
+    output_delta = JuLS.evaluate(invariant, input_delta)
     @test output_delta.value == -1
 end
