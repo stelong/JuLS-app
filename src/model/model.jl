@@ -152,19 +152,21 @@ end
 generate_input(::Type{Move}, ::AbstractModel, move::Move) = move
 
 """
-    optimize!(model::AbstractModel; 
-             rng = Random.GLOBAL_RNG, 
-             n_iterations::Int = 100)
+    optimize!(model::AbstractModel;
+             limit = IterationLimit(100),
+             rng = Random.GLOBAL_RNG)
 
 Main optimization function that iteratively improves the solution.
 
 # Arguments
 - `model::AbstractModel`: Model to optimize
+- `limit`: Stopping criterion. Either a `Limit` object (`IterationLimit`, `TimeLimit`,
+  `StagnationLimit`), an integer (number of iterations), or `:auto` for early stopping
+  once the best solution stops improving.
 - `rng`: Random number generator
-- `n_iterations::Int`: Number of iterations to perform
 """
-optimize!(model::AbstractModel; limit::Limit=IterationLimit(100), rng=Random.GLOBAL_RNG) =
-    optimize!(model, Move, limit, rng)
+optimize!(model::AbstractModel; limit::Union{Limit,Int,Symbol}=IterationLimit(100), rng=Random.GLOBAL_RNG) =
+    optimize!(model, Move, Limit(limit), rng)
 
 function optimize!(
     model::AbstractModel,
@@ -184,6 +186,33 @@ function optimize!(model::AbstractModel, T::Type{<:MoveEvaluatorInput}, time_lim
     while !is_above(time_limit)
         size_hint!(model, 1)
         optimize_one_iteration!(model, T; rng)
+    end
+end
+
+_best_objective(model::AbstractModel) = isnothing(model.best_solution) ? Inf : model.best_solution.objective
+
+"""
+    optimize!(model::AbstractModel, T::Type{<:MoveEvaluatorInput}, limit::StagnationLimit, rng)
+
+Optimizes with early stopping: iterates until the best feasible objective has not
+improved for `limit.patience` consecutive iterations (or `limit.max_iterations` is reached).
+"""
+function optimize!(
+    model::AbstractModel,
+    T::Type{<:MoveEvaluatorInput},
+    limit::StagnationLimit,
+    rng=Random.GLOBAL_RNG,
+)
+    best_objective = _best_objective(model)
+    stagnation = 0
+    n_iterations = 0
+    while n_iterations < limit.max_iterations && stagnation < limit.patience
+        size_hint!(model, 1)
+        optimize_one_iteration!(model, T; rng)
+        n_iterations += 1
+        new_best = _best_objective(model)
+        stagnation = new_best < best_objective ? 0 : stagnation + 1
+        best_objective = min(best_objective, new_best)
     end
 end
 
@@ -309,6 +338,29 @@ end
     model.current_solution = JuLS.Solution([JuLS.IntDecisionValue(789), JuLS.IntDecisionValue(4)], 2.3, true)
     JuLS.after_move_hook!(model)
     @test JuLS.values(model.best_solution)[1] == JuLS.IntDecisionValue(789)
+end
+
+@testitem "optimize! with StagnationLimit" begin
+    using Random
+
+    e = JuLS.KnapsackExperiment(JuLS.PROJECT_ROOT * "/data/knapsack/ks_4_0", 10.0)
+
+    # :auto stops once the best solution stagnates, well before max_iterations
+    model = JuLS.init_model(e)
+    JuLS.optimize!(model; limit = :auto, rng = Random.MersenneTwister(0))
+    n_iterations = model.run_metrics.current_iteration - 1
+    @test n_iterations >= JuLS.StagnationLimit().patience
+    @test n_iterations < JuLS.StagnationLimit().max_iterations
+
+    # The safety cap wins when patience is larger than max_iterations
+    model = JuLS.init_model(e)
+    JuLS.optimize!(model; limit = JuLS.StagnationLimit(100; max_iterations = 5), rng = Random.MersenneTwister(0))
+    @test model.run_metrics.current_iteration - 1 == 5
+
+    # An integer limit behaves like IterationLimit
+    model = JuLS.init_model(e)
+    JuLS.optimize!(model; limit = 7, rng = Random.MersenneTwister(0))
+    @test model.run_metrics.current_iteration - 1 == 7
 end
 
 @testitem "apply_move!(::Model, ::NoMove)" begin

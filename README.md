@@ -80,15 +80,24 @@ model = init_model(
 )
 ```
 
-8. Optimize over iterations or time
+8. Optimize over iterations, time, or until the best solution stops improving
 ```julia
-optimize!(model; limit = IterationLimit(100))
+optimize!(model; limit = IterationLimit(100))   # or simply limit = 100
 optimize!(model; limit = TimeLimit(10))
+optimize!(model; limit = :auto)                 # early stopping, StagnationLimit() by default
+optimize!(model; limit = StagnationLimit(20; max_iterations = 1000))
 ```
 
 9. Generate an output 
 ```julia
 make_output_folder(model)
+```
+
+10. Plot the best solution found (built-in for the Knapsack, TSP and Graph Coloring experiments). To support plotting for your own experiment, implement `plot_solution(e::YourExperiment, solution::JuLS.Solution)` returning a CairoMakie `Figure`
+```julia
+using CairoMakie
+fig = plot_solution(e, model)
+save("solution.png", fig)
 ```
 ---
 

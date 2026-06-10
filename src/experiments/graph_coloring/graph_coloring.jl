@@ -66,6 +66,7 @@ generate_domains(e::GraphColoringExperiment) = [collect(1:e.max_color) for _ = 1
 include("graph_coloring_init.jl")
 include("graph_coloring_dag.jl")
 include("graph_coloring_neigh.jl")
+include("graph_coloring_plot.jl")
 
 default_init(::GraphColoringExperiment) = GreedyInitialization()
 default_neigh(e::GraphColoringExperiment) = coloring_neighbourhood(e, 3)

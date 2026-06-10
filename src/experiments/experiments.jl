@@ -29,6 +29,7 @@ decision_type(::Experiment) = error("You must implement a type for the problem's
 include("knapsack/knapsack.jl")
 include("tsp/tsp.jl")
 include("graph_coloring/graph_coloring.jl")
+include("ticket_pricing/ticket_pricing.jl")
 
 """
     init_model(
@@ -86,6 +87,26 @@ function generate_decision_variables(e::Experiment, domains::Vector{Vector{T}}, 
         DecisionVariable(i, type.(domains[i]), type(init_solution[i])) for i = 1:n_decision_variables(e)
     ]
 end
+
+"""
+    plot_solution(e::Experiment, model::AbstractModel)
+
+Plots the best feasible solution found by the model for the given experiment.
+Falls back to the current solution (with a warning) if no feasible solution was found.
+
+Each experiment must implement `plot_solution(e::YourExperiment, solution::Solution)`
+returning a CairoMakie Figure.
+"""
+function plot_solution(e::Experiment, model::AbstractModel)
+    solution = model.best_solution
+    if isnothing(solution)
+        @warn "No feasible solution was found, plotting the current solution instead."
+        solution = model.current_solution
+    end
+    return plot_solution(e, solution)
+end
+plot_solution(::Experiment, ::Solution) =
+    error("You must implement the function plot_solution() for your experiment.")
 
 default_init(::Experiment) = SimpleInitialization()
 default_neigh(e::Experiment) = ExhaustiveNeighbourhood(2, n_decision_variables(e))

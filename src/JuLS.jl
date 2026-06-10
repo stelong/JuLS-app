@@ -11,6 +11,7 @@ using CSV
 using DataStructures
 using Random
 using Combinatorics
+using CairoMakie
 
 
 const PROJECT_ROOT = pkgdir(JuLS)
@@ -44,6 +45,7 @@ export
     KnapsackExperiment,
     TSPExperiment,
     GraphColoringExperiment,
+    TicketPricingExperiment,
 
     # InitializationHeuristic
     SimpleInitialization,
@@ -58,16 +60,22 @@ export
     KOptNeighbourhood,
     RandomNeighbourhood,
     SwapNeighbourhood,
+    TicketTransferNeighbourhood,
 
     # MoveSelectionHeuristic
     GreedyMoveSelection,
     Metropolis,
     SimulatedAnnealing,
 
+    # Plotting
+    plot_solution,
+    plot_objective,
+
     # Optimization
     optimize!,
     IterationLimit,
     TimeLimit,
+    StagnationLimit,
 
     # DAG and Decision values
     DAG,

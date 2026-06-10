@@ -72,6 +72,7 @@ L2(coord1::Vector{Float64}, coord2::Vector{Float64}) =
 include("christofides.jl")
 include("tsp_init.jl")
 include("tsp_dag.jl")
+include("tsp_plot.jl")
 
 default_init(::TSPExperiment) = ChristofidesInitialization()
 default_neigh(::TSPExperiment) = KOptNeighbourhood(1, 2)
