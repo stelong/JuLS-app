@@ -93,12 +93,18 @@ optimize!(model; limit = StagnationLimit(20; max_iterations = 1000))
 make_output_folder(model)
 ```
 
-10. Plot the best solution found (built-in for the Knapsack, TSP and Graph Coloring experiments). To support plotting for your own experiment, implement `plot_solution(e::YourExperiment, solution::JuLS.Solution)` returning a CairoMakie `Figure`
+10. Plot the best solution found. Plotting lives in a **separate local environment** (`plotting/`) so that CairoMakie stays out of the deployable solver image. Built-in plots are provided for the Knapsack, TSP, Graph Coloring and Ticket Pricing experiments.
 ```julia
-using CairoMakie
+# from the repo root, one-time setup:
+#   julia --project=plotting -e 'using Pkg; Pkg.instantiate()'
+julia --project=plotting
+
+using JuLS, JuLSPlots
 fig = plot_solution(e, model)
 save("solution.png", fig)
 ```
+To support plotting for your own experiment, implement `plot_solution(e::YourExperiment, solution::JuLS.Solution)` in `JuLSPlots` returning a CairoMakie `Figure`. See `plotting/README.md`.
+
 ---
 
 ## Wrapper for JuLS solver

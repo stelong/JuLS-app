@@ -95,37 +95,6 @@ function best_solution_indexes(m::RunMetrics)
     return best_solutions
 end
 
-"""
-    plot_objective(m::RunMetrics)
-
-Creates a plot showing the evolution of the objective function and best solutions.
-
-# Returns
-A CairoMakie Figure.
-"""
-function plot_objective(m::RunMetrics)
-    best_solutions = best_solution_indexes(m)
-
-    fig = Figure()
-    ax = Axis(fig[1, 1], xlabel = "iteration", ylabel = "objective")
-    lines!(ax, 1:m.current_iteration, m.objective[1:m.current_iteration], label = "objective")
-    scatter!(ax, best_solutions, m.objective[best_solutions], color = :crimson, label = "best solutions")
-    axislegend(ax)
-
-    return fig
-end
-
-@testitem "plot_objective" begin
-    metrics = JuLS.RunMetrics(JuLS.Solution([], 10, false))
-    JuLS.resize_metrics!(metrics, 10)
-
-    JuLS.record_solution!(metrics, JuLS.Solution([], 12, true))
-    JuLS.record_solution!(metrics, JuLS.Solution([], 8, true))
-
-    fig = JuLS.plot_objective(metrics)
-    @test fig isa JuLS.CairoMakie.Figure
-end
-
 @testitem "RunMetrics init" begin
     using Dates
     metrics = JuLS.RunMetrics(JuLS.Solution([], 10, false)) # We want the first solution to be stored in the metrics as if it was one iteration

@@ -61,7 +61,6 @@ generate_domains(e::KnapsackExperiment) = [[false, true] for _ = 1:e.n_items]
 include("knapsack_init.jl")
 include("knapsack_dag.jl")
 include("knapsack_neigh.jl")
-include("knapsack_plot.jl")
 
 default_init(::KnapsackExperiment) = GreedyInitialization()
 default_neigh(e::KnapsackExperiment) = ExhaustiveNeighbourhood(2, e.n_items)

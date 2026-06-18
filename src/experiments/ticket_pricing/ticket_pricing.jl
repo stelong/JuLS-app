@@ -114,7 +114,6 @@ unit_margin(e::TicketPricingExperiment, j::Int, tier::Int) =
 include("ticket_pricing_dag.jl")
 include("ticket_pricing_init.jl")
 include("ticket_pricing_neigh.jl")
-include("ticket_pricing_plot.jl")
 
 default_init(::TicketPricingExperiment) = SimpleInitialization()
 default_neigh(e::TicketPricingExperiment) = TicketTransferNeighbourhood(e)

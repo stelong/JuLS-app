@@ -11,7 +11,6 @@ using CSV
 using DataStructures
 using Random
 using Combinatorics
-using CairoMakie
 
 
 const PROJECT_ROOT = pkgdir(JuLS)
@@ -66,10 +65,6 @@ export
     GreedyMoveSelection,
     Metropolis,
     SimulatedAnnealing,
-
-    # Plotting
-    plot_solution,
-    plot_objective,
 
     # Optimization
     optimize!,

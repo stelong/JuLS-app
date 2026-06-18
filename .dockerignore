@@ -6,6 +6,7 @@ docs
 report
 test
 data
+plotting
 *.ipynb
 *.pdf
 *.png
