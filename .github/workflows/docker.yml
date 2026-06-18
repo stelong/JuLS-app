@@ -51,6 +51,8 @@ jobs:
           context: .
           # PRs only validate that the image builds; pushes happen on main/tags
           push: ${{ github.event_name != 'pull_request' }}
+          # Single image manifest (no extra unknown/unknown attestation entry)
+          provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

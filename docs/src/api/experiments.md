@@ -25,11 +25,8 @@ All experiments must implement the following interface:
 
 ## Plotting
 
-Each built-in experiment provides a CairoMakie visualization of the best solution found:
-
-```@docs
-plot_solution(::Experiment, ::JuLS.AbstractModel)
-plot_solution(::TSPExperiment, ::JuLS.Solution)
-plot_solution(::KnapsackExperiment, ::JuLS.Solution)
-plot_solution(::GraphColoringExperiment, ::JuLS.Solution)
-```
+Plotting lives in a separate, local-only environment (`plotting/`, the `JuLSPlots`
+package) so that CairoMakie stays out of the deployable solver. It provides
+`plot_solution(experiment, model)` for the Knapsack, TSP, Graph Coloring and
+Ticket Pricing experiments, plus `plot_objective(model.run_metrics)`. See
+`plotting/README.md` for setup and usage.
