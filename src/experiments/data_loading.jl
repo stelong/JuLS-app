@@ -1,4 +1,4 @@
-# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright (c) 2026 Stefano Longobardi
 # SPDX-License-Identifier: Apache-2.0
 
 # Unified data-loading contract for experiments.
@@ -27,9 +27,13 @@ Base.showerror(io::IO, e::InvalidInputError) = print(io, "InvalidInputError: ", 
     FieldSpec(name, kind, required, doc)
 
 Describes one field of an experiment's `data` payload. Returned by [`data_schema`](@ref)
-to document the API; validation itself is performed in `from_data`. `kind` is one of
-`:integer`, `:number`, `:integer_array`, `:number_array`, `:coordinate_array`,
-`:edge_array`, `:object_array`.
+to document the API; validation itself is performed in `from_data`.
+
+# Fields
+- `name::String`: Field name as it appears in the `data` payload
+- `kind::Symbol`: One of `:integer`, `:number`, `:integer_array`, `:number_array`, `:coordinate_array`, `:edge_array`, `:object_array`
+- `required::Bool`: Whether the field must be present
+- `doc::String`: Human-readable description shown by the API
 """
 struct FieldSpec
     name::String
@@ -49,12 +53,25 @@ _is_int(x) = x isa Integer || (x isa Real && isinteger(x))
 _require(data::AbstractDict, key::String) =
     haskey(data, key) ? data[key] : throw(InvalidInputError("missing required field '$key'"))
 
+"""
+    as_integer(data, key) -> Int
+
+Reads required field `key` as an integer, throwing `InvalidInputError` if it is
+missing or not integer-valued.
+"""
 function as_integer(data::AbstractDict, key::String)
     v = _require(data, key)
     _is_int(v) || throw(InvalidInputError("field '$key' must be an integer, got $(_typename(v))"))
     return Int(v)
 end
 
+"""
+    as_number(data, key) -> Float64
+    as_number(data, key, default) -> Float64
+
+Reads field `key` as a floating-point number. The three-argument form returns
+`default` when the field is absent; the two-argument form requires it.
+"""
 function as_number(data::AbstractDict, key::String)
     v = _require(data, key)
     v isa Real || throw(InvalidInputError("field '$key' must be a number, got $(_typename(v))"))
@@ -63,6 +80,11 @@ end
 as_number(data::AbstractDict, key::String, default::Real) =
     haskey(data, key) ? as_number(data, key) : Float64(default)
 
+"""
+    as_string(data, key) -> String
+
+Reads required field `key` as a string, throwing `InvalidInputError` otherwise.
+"""
 function as_string(data::AbstractDict, key::String)
     v = _require(data, key)
     v isa AbstractString || throw(InvalidInputError("field '$key' must be a string, got $(_typename(v))"))
@@ -72,12 +94,22 @@ end
 _elem_int(x, key::String) = _is_int(x) ? Int(x) : throw(InvalidInputError("field '$key' must contain only integers"))
 _elem_num(x, key::String) = x isa Real ? Float64(x) : throw(InvalidInputError("field '$key' must contain only numbers"))
 
+"""
+    as_integer_array(data, key) -> Vector{Int}
+
+Reads required field `key` as an array of integers.
+"""
 function as_integer_array(data::AbstractDict, key::String)
     v = _require(data, key)
     v isa AbstractVector || throw(InvalidInputError("field '$key' must be an array of integers"))
     return Int[_elem_int(x, key) for x in v]
 end
 
+"""
+    as_number_array(data, key) -> Vector{Float64}
+
+Reads required field `key` as an array of numbers.
+"""
 function as_number_array(data::AbstractDict, key::String)
     v = _require(data, key)
     v isa AbstractVector || throw(InvalidInputError("field '$key' must be an array of numbers"))
@@ -119,9 +151,22 @@ function as_edge_array(data::AbstractDict, key::String)
     return edges
 end
 
-# Generic fallbacks — concrete experiments override these.
+"""
+    from_data(::Type{E}, data::AbstractDict) -> E
+
+Builds an experiment of type `E` from a decoded `data` payload, validating it with
+the coercion helpers above. Each concrete `Experiment` overrides this method; the
+generic fallback throws `InvalidInputError`.
+"""
 from_data(::Type{E}, ::AbstractDict) where {E<:Experiment} =
     throw(InvalidInputError("loading from data is not supported for $(E)"))
+
+"""
+    data_schema(::Type{E}) -> Vector{FieldSpec}
+
+Returns the self-describing input schema for experiment type `E`, used to document
+the API. Each concrete `Experiment` overrides this method.
+"""
 data_schema(::Type{E}) where {E<:Experiment} =
     error("data_schema is not implemented for $(E)")
 

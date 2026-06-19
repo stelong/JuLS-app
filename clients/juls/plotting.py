@@ -1,7 +1,6 @@
-# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright (c) 2026 Stefano Longobardi
 # SPDX-License-Identifier: Apache-2.0
-"""matplotlib/seaborn renderings of JuLS solutions, mirroring the Julia
-`plotting/` reference (JuLSPlots).
+"""matplotlib/seaborn renderings of JuLS solutions.
 
 Every function takes the request `data` you sent and the JSON `response` the
 server returned, and returns a matplotlib `Figure`. `summarize` returns a polars

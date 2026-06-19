@@ -73,6 +73,13 @@ Decision is the color selected for each node (indexed by Int)
 decision_type(::GraphColoringExperiment) = IntDecisionValue
 generate_domains(e::GraphColoringExperiment) = [collect(1:e.max_color) for _ = 1:e.n_nodes]
 
+"""
+    from_data(::Type{GraphColoringExperiment}, data)
+
+Builds a graph-coloring experiment from a payload with `n_nodes`, `max_color`,
+`edges` (each `[i, j]` within `1..n_nodes`) and an optional `penalty`. See
+[`data_schema`](@ref).
+"""
 function from_data(::Type{GraphColoringExperiment}, data::AbstractDict)
     n_nodes = as_integer(data, "n_nodes")
     max_color = as_integer(data, "max_color")

@@ -1,4 +1,4 @@
-# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright (c) 2026 Stefano Longobardi
 # SPDX-License-Identifier: Apache-2.0
 
 """
@@ -157,8 +157,19 @@ end
 # ---------------------------------------------------------------------------
 # Handlers
 # ---------------------------------------------------------------------------
+"""
+    health_handler(::HTTP.Request)
+
+Liveness probe for `GET /health`; returns `ok` plus the registered problem names.
+"""
 health_handler(::HTTP.Request) = Dict("status" => "ok", "problems" => JuLS.available_problems())
 
+"""
+    problems_handler(::HTTP.Request)
+
+Handles `GET /problems`, returning the input schema ([`FieldSpec`](@ref) fields) of
+every registered problem.
+"""
 function problems_handler(::HTTP.Request)
     return Dict(
         problem => [
@@ -168,6 +179,13 @@ function problems_handler(::HTTP.Request)
     )
 end
 
+"""
+    solve_handler(req::HTTP.Request)
+
+Handles `POST /solve`: decodes the JSON body, builds the experiment, runs the
+solver, and returns the comprehensive solution summary. Malformed input yields an
+HTTP 400 with an error message; solver failures yield an HTTP 500.
+"""
 function solve_handler(req::HTTP.Request)
     local body
     try

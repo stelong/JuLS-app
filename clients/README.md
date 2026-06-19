@@ -6,7 +6,7 @@ JSON, so these are pure clients — nothing here is needed to run the solver.
 ## Install
 
 ```bash
-pip install -r clients/requirements.txt
+pip install -r clients/requirements/requirements.txt
 ```
 
 ## Run the server

@@ -1,1 +1,7 @@
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
+JuLS-app is a fork of JuLS (https://github.com/amazon-science/JuLS), originally
+authored by the JuLS team and distributed under the Apache License 2.0. This
+fork adds a REST API, container build, and Python clients, with modifications
+Copyright (c) 2026 Stefano Longobardi. The original solver code retains its
+upstream Amazon copyright notices. See LICENSE for terms.

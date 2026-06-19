@@ -58,6 +58,13 @@ The value of a decision determines the position of the corresponding city in the
 decision_type(::TSPExperiment) = IntDecisionValue
 generate_domains(e::TSPExperiment) = [collect(1:e.n_nodes) for _ = 1:e.n_nodes]
 
+"""
+    from_data(::Type{TSPExperiment}, data)
+
+Builds a TSP experiment from a payload with `coordinates` (at least 2 `[x, y]`
+pairs; distances are L2 rounded to integers) and an optional `penalty`. See
+[`data_schema`](@ref).
+"""
 function from_data(::Type{TSPExperiment}, data::AbstractDict)
     coordinates = as_coordinate_array(data, "coordinates")
     size(coordinates, 1) >= 2 || throw(InvalidInputError("'coordinates' must contain at least 2 cities"))

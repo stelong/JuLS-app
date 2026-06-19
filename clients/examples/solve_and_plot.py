@@ -1,11 +1,11 @@
-# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright (c) 2026 Stefano Longobardi
 # SPDX-License-Identifier: Apache-2.0
 """Solve every problem synchronously and save a solution + objective-history plot.
 
     python clients/examples/solve_and_plot.py [BASE_URL]
 
 Requires a running server (default http://localhost:8080) and the deps in
-clients/requirements.txt. PNGs are written to clients/examples/out/.
+clients/requirements/requirements.txt. PNGs are written to clients/examples/out/.
 """
 import sys
 from pathlib import Path

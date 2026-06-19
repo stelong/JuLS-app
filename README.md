@@ -1,127 +1,163 @@
-<div align="center">
+# JuLS-app
 
-# JuLS : A Julia Local Search solver
+A containerised REST API for the **JuLS** local-search solver: send an optimization problem as JSON over HTTP, get the solution back as JSON. One image, many problems, data-in / solution-out — runnable on your laptop, in Docker, or in a cluster.
 
-[![Documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://amazon-science.github.io/JuLS/dev/)
+> **Fork notice.** JuLS-app is a fork of [JuLS](https://github.com/amazon-science/JuLS) (Amazon Science), distributed under the Apache License 2.0. The core solver is unchanged; this fork adds a REST API, a container build, and Python clients. For the solver's theory and the accompanying paper, see the [upstream repository](https://github.com/amazon-science/JuLS) and its [paper](https://github.com/amazon-science/JuLS/blob/main/JuLS.pdf). See [`NOTICE`](NOTICE) and [`LICENSE`](LICENSE).
 
-</div>
-
-
-<div align="center">
-  <img src="logo.png" alt="drawing" width="300"/>
-</div>
-
-<br>
-
-`JuLS` is a Julia Local Search solver that combines Constraint Based Local Search (CBLS) and Constraint Programming (CP) to solve Constraint Optimization Problem (COP). It is to be seen as an open source project that gives the possibility to solve combinatorial and black box optimization problems.
-
-A paper with theoretical foundations accompanying this solver can be found [here](JuLS.pdf). 
-
-The CBLS part is inspired by the paper [LocalSolver 1.x](https://www.afpc-asso.org/assets/actes/actes-JFPC-2011.pdf#page=37). The CP part is inspired by [MiniCP](http://www.minicp.org/) and [SeaPearl.jl](https://github.com/corail-research/SeaPearl.jl). 
+JuLS combines Constraint-Based Local Search (CBLS) and Constraint Programming (CP) to solve Constraint Optimization Problems. Solving is fast and stateless, so the API is a single synchronous endpoint and scales horizontally.
 
 ---
 
-## Installation
+## Quick start
 
-Clone the project and start julia in your terminal at the root using :
+Pull and run the image (no build required):
+
+```bash
+docker run --rm -p 8080:8080 steplong/juls-app:latest
 ```
+
+Then talk to it:
+
+```bash
+# liveness + registered problems
+curl http://localhost:8080/health
+
+# input schema for every problem
+curl http://localhost:8080/problems
+
+# solve a knapsack instance
+curl -X POST http://localhost:8080/solve \
+  -H 'Content-Type: application/json' \
+  -d '{
+        "problem": "knapsack",
+        "data": {"capacity": 10, "values": [6,5,8,9,6], "weights": [2,3,6,7,5]},
+        "solve": {"limit": 200, "seed": 0}
+      }'
+```
+
+Built-in problems: `knapsack`, `tsp`, `graph_coloring`, `ticket_pricing`.
+
+---
+
+## HTTP API
+
+| Method | Path        | Description |
+|--------|-------------|-------------|
+| `GET`  | `/health`   | Liveness probe; returns `ok` and the registered problem names. |
+| `GET`  | `/problems` | Input schema (fields, types, required flags) for every problem. |
+| `POST` | `/solve`    | Solve a problem synchronously; returns the solution as JSON. |
+
+**Request body** for `POST /solve`:
+
+```jsonc
+{
+  "problem": "knapsack",          // a registered problem name
+  "data":    { ... },             // problem-specific fields (see GET /problems)
+  "solve":   {                    // optional
+    "limit":    200,              // int (iterations) | "auto" | {"time": 5} | {"stagnation": 20, "max_iterations": 1000}
+    "using_cp": true,             // filter moves with CP (default true)
+    "seed":     0                 // optional RNG seed for reproducibility
+  }
+}
+```
+
+**Response** (abridged):
+
+```jsonc
+{
+  "id": "…", "problem": "knapsack", "status": "feasible",
+  "solve":  { "limit": {"type": "iterations", "value": 200}, "using_cp": true, "seed": 0 },
+  "result": {
+    "objective": -15.0, "feasible": true,
+    "variables": [true, false, false, true, false],
+    "n_decision_variables": 5, "decision_type": "BinaryDecisionValue",
+    "objective_sense": "minimize"
+  },
+  "metrics": {
+    "iterations": 200, "solve_time_seconds": 0.01, "initial_objective": -11.0,
+    "objective_history": [ … ], "feasible_history": [ … ],
+    "iteration_time_seconds": [ … ], "improving_iterations": [1, 2, 6, 11]
+  }
+}
+```
+
+The objective is always **minimized** (e.g. knapsack returns `-15.0` for a maximized value of 15). Invalid input returns HTTP `400` with an `{"error": …}` message.
+
+---
+
+## Python clients
+
+[`clients/`](clients/) provides a Python client (sync + async, with concurrent batch solving) and matplotlib/seaborn plotting from the JSON response. See [`clients/README.md`](clients/README.md).
+
+```python
+from juls import JuLSClient, plot_solution
+
+with JuLSClient("http://localhost:8080") as client:
+    data = {"capacity": 10, "values": [6, 5, 8, 9, 6], "weights": [2, 3, 6, 7, 5]}
+    res = client.solve("knapsack", data, limit="auto", seed=0)
+plot_solution(data, res).savefig("knapsack.png", dpi=150)
+```
+
+---
+
+## Register a new optimization problem
+
+A problem is a Julia `Experiment` type plus a data-loading contract, registered by name. To add one (use the existing experiments under [`src/experiments/`](src/experiments/) as templates):
+
+1. **Define the experiment** and the core interface — `n_decision_variables`, `decision_type`, `generate_domains`, and `create_dag` (the DAG of invariants encoding objective + constraints). Optionally provide custom `init` / `neigh` / `pick` heuristics; defaults are used otherwise. See [`src/experiments/experiments.jl`](src/experiments/experiments.jl).
+
+2. **Add the data-loading contract** so the problem is reachable over HTTP — implement
+   ```julia
+   from_data(::Type{YourExperiment}, data::AbstractDict)   # validate payload -> build instance
+   data_schema(::Type{YourExperiment})                     # Vector{FieldSpec} describing the input
+   ```
+   using the coercion helpers (`as_integer`, `as_number`, `as_integer_array`, `as_coordinate_array`, `as_edge_array`, …) in [`src/experiments/data_loading.jl`](src/experiments/data_loading.jl). They validate input and raise `InvalidInputError` (→ HTTP 400) with actionable messages.
+
+3. **Register it** by adding one entry to `EXPERIMENT_REGISTRY` in [`src/experiments/experiments.jl`](src/experiments/experiments.jl):
+   ```julia
+   "your_problem" => YourExperiment,
+   ```
+
+That's it — `GET /problems` now advertises its schema and `POST /solve` accepts `"problem": "your_problem"`.
+
+---
+
+## Build your own image
+
+After registering your problem, build and run a custom image:
+
+```bash
+docker build -t <your-user>/juls-app .
+docker run --rm -p 8080:8080 <your-user>/juls-app
+```
+
+The [`Dockerfile`](Dockerfile) is multi-stage: instantiate + precompile → build a PackageCompiler **sysimage** (so there's no first-request JIT latency) → slim runtime. On startup the server runs a warmup solve per problem before accepting traffic, and serves requests across threads (`JULIA_NUM_THREADS=auto`). Runtime is configurable via `HOST`, `PORT`, `PARALLEL`, `WARMUP`.
+
+Pushing to `main` (or tagging `v*`) triggers [`.github/workflows/docker.yml`](.github/workflows/docker.yml), which builds and pushes the image to Docker Hub.
+
+---
+
+## Local Julia use
+
+You can also drive the solver directly from Julia (no HTTP):
+
+```bash
 julia --threads=auto --project=.
 ```
----
 
-## Use
+```julia
+using JuLS
 
-Examples are provided for the Knapsack problem, TSP and Graph Coloring Problem in this [notebook](zoo.ipynb) . To solve a new COP using JuLS, one needs to : 
-1. Create a new experiment to store the instance data : 
-```julia
-YourExperiment <: Experiment
-```
-An experiment must implement the functions :
-```julia
-n_decision_variables(e::YourExperiment)
-decision_type(e::YourExperiment)
-```
-These functions define the number of decision variables and the type of decision (`BinaryDecisionValue`, `IntDecisionValue`, ...)
-
-2. Declare the domain generation function for your decision variables
-```julia
-generate_domains(e::YourExperiment)
+experiment = KnapsackExperiment(joinpath(JuLS.PROJECT_ROOT, "data", "knapsack", "ks_4_0"))
+model = init_model(experiment; using_cp = true)
+optimize!(model; limit = IterationLimit(100))   # or limit = 100, TimeLimit(10), :auto, StagnationLimit(20)
+println(model.best_solution.objective)
 ```
 
-3. Declare an initialization heuristic that must return a vector of decision variables : 
-```julia
-(::SimpleInitialization)(e::YourExperiment)
-```
-
-4. Create a Directed Acyclic Graph (DAG) of invariants representing your COP : 
-```julia
-create_dag(e::YourExperiment)
-```
-5. Declare a neighbourhood heuristic
-```julia
-struct YourNeighbourhood <: NeighbourhoodHeuristic
-```
-Otherwise a default neighbourhood heuristic is given automatically. This one samples randomly two decision variables and generates all the possible move combinations for these variables.
-
-6. Declare a move selection heuristic
-```julia
-struct YourPicker <: MoveSelectionHeuristic
-```
-Otherwise a default move selection heuristic is given automatically. This one picks the most impactful and feasible move among the ones evaluated. 
-
-7. Initialize a model. To efficiently filter moves with CP, set `using_cp = true`
-```julia
-model = init_model(
-    e; 
-    init = SimpleInitialization(),
-    neigh = YourNeighbourhood(...), 
-    pick = YourPicker(...),
-    using_cp = true
-)
-```
-
-8. Optimize over iterations, time, or until the best solution stops improving
-```julia
-optimize!(model; limit = IterationLimit(100))   # or simply limit = 100
-optimize!(model; limit = TimeLimit(10))
-optimize!(model; limit = :auto)                 # early stopping, StagnationLimit() by default
-optimize!(model; limit = StagnationLimit(20; max_iterations = 1000))
-```
-
-9. Generate an output 
-```julia
-make_output_folder(model)
-```
-
-10. Plot the best solution found. Plotting lives outside the solver (so no plotting dependency reaches the deployable image): the Python clients in [`clients/`](clients/) render the JSON solve response with matplotlib/seaborn (`plot_solution`, `plot_objective`) and summarise it with polars. Built-in plots are provided for the Knapsack, TSP, Graph Coloring and Ticket Pricing experiments. See [`clients/README.md`](clients/README.md).
+The solver internals live under [`src/`](src/): the local-search [`model`](src/model/model.jl), the [`dag`](src/dag/dag.jl) of invariants, the [`cp`](src/cp/cp.jl) filter, the [`heuristics`](src/heuristics/heuristics.jl), and the [`experiments`](src/experiments/experiments.jl).
 
 ---
 
-## Wrapper for JuLS solver
+## License
 
-- [model](src/model/model.jl): The Local Search model that will optimize the problem defined
-- [dag](src/dag/dag.jl): The Directed Acyclic Graph (DAG) structure to evaluate the constraints and objectives of the problem to optimize. Each DAG component is declared in the invariant section.
-- [cp](src/cp/cp.jl): The constraint programming solver to filter efficiently infeasible moves. A builder is provided to convert a DAG into the corresponding CSP (Constraint Satisfaction Problem)
-- [heuristics](src/heuristics/heuristics.jl): The heuristics to be used during model optimization for initialization, neighbourhood definition and move selection.
-- [experiments](src/experiments/experiments.jl): Optimizes a certain problem based on input data. The place to declare the problem's DAG and the customized heuristics.
-
----
-
-## Bugs or questions?
-If you have any inquiries pertaining to the code or the paper, please do not hesitate to contact the authors cited below. In case you encounter any issues while utilising the code or wish to report a bug, you may open an issue. We kindly request that you provide specific details regarding the problem so that we can offer prompt and efficient assistance.
-
----
-
-## Authors
-
-| Name | GitHub |
-|------|--------|
-| [**Axel Navarro**](https://www.linkedin.com/in/axel-navarro-99289921a/) | [navaxel](https://github.com/navaxel) |
-| [**Arthur Dupuis**](https://www.linkedin.com/in/arthur-dupuis-3a38301a5/) | [dupuisar](https://github.com/dupuisar) |
-| [**Ilan Coulon**](https://www.linkedin.com/in/ilancoulon/) | [ilancoulon](https://github.com/ilancoulon) |
-| [**Ezra Reich**](https://www.linkedin.com/in/ezra-reich/) | [EZePiZy](https://github.com/EZePiZy) |
-| [**Mehdi Oudaoud**](https://www.linkedin.com/in/el-mehdi-oudaoud-7830b9201/) | [Mehdi5578](https://github.com/Mehdi5578) |
-| [**Maxime Mulamba**](https://www.linkedin.com/in/maxime-mulamba-ke-tchomba-b17145195/) | [CryoCardiogram](https://github.com/CryoCardiogram) |
-
-
----
+Apache License 2.0 — see [`LICENSE`](LICENSE), [`NOTICE`](NOTICE), and [`THIRD-PARTY-LICENSES.txt`](THIRD-PARTY-LICENSES.txt). A fork of [amazon-science/JuLS](https://github.com/amazon-science/JuLS).

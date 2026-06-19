@@ -1,4 +1,4 @@
-# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright (c) 2026 Stefano Longobardi
 # SPDX-License-Identifier: Apache-2.0
 """Fire many solves concurrently and compare against running them one by one.
 

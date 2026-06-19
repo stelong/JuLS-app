@@ -68,6 +68,12 @@ Decision is binary for item selection.
 decision_type(::KnapsackExperiment) = BinaryDecisionValue
 generate_domains(e::KnapsackExperiment) = [[false, true] for _ = 1:e.n_items]
 
+"""
+    from_data(::Type{KnapsackExperiment}, data)
+
+Builds a knapsack experiment from a payload with `capacity`, `values`, `weights`
+(equal-length, non-empty) and an optional `penalty`. See [`data_schema`](@ref).
+"""
 function from_data(::Type{KnapsackExperiment}, data::AbstractDict)
     capacity = as_integer(data, "capacity")
     values = as_integer_array(data, "values")

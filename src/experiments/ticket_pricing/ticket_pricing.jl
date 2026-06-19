@@ -124,6 +124,13 @@ price tier: `price * (1 - commission_j) - fixed_fee_j`.
 unit_margin(e::TicketPricingExperiment, j::Int, tier::Int) =
     e.price_tiers[tier] * (1 - e.commissions[j]) - e.fixed_fees[j]
 
+"""
+    from_data(::Type{TicketPricingExperiment}, data)
+
+Builds a ticket-pricing experiment from a payload with `n_tickets`, `price_tiers`
+and `retailers` (each `{name, commission, fixed_fee, demands}` with one demand per
+price tier) plus an optional `penalty`. See [`data_schema`](@ref).
+"""
 function from_data(::Type{TicketPricingExperiment}, data::AbstractDict)
     n_tickets = as_integer(data, "n_tickets")
     price_tiers = as_number_array(data, "price_tiers")
