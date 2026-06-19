@@ -23,11 +23,12 @@ RUN julia -e 'using Pkg; Pkg.precompile()' \
 
 # --- Stage 2: sysimage ---------------------------------------------------------
 # Builds a custom sysimage that bakes JuLS + Oxygen + the solve hot path into
-# native code. PackageCompiler (and gcc) live only in this throwaway stage.
+# native code. PackageCompiler and the C toolchain (gcc/g++ + libc dev files,
+# needed to link the sysimage) live only in this throwaway stage.
 FROM builder AS sysimage
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends gcc \
+    && apt-get install -y --no-install-recommends build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 RUN SYSIMAGE_PATH=/app/juls_sysimage.so julia server/build_sysimage.jl
