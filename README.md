@@ -93,17 +93,7 @@ optimize!(model; limit = StagnationLimit(20; max_iterations = 1000))
 make_output_folder(model)
 ```
 
-10. Plot the best solution found. Plotting lives in a **separate local environment** (`plotting/`) so that CairoMakie stays out of the deployable solver image. Built-in plots are provided for the Knapsack, TSP, Graph Coloring and Ticket Pricing experiments.
-```julia
-# from the repo root, one-time setup:
-#   julia --project=plotting -e 'using Pkg; Pkg.instantiate()'
-julia --project=plotting
-
-using JuLS, JuLSPlots
-fig = plot_solution(e, model)
-save("solution.png", fig)
-```
-To support plotting for your own experiment, implement `plot_solution(e::YourExperiment, solution::JuLS.Solution)` in `JuLSPlots` returning a CairoMakie `Figure`. See `plotting/README.md`.
+10. Plot the best solution found. Plotting lives outside the solver (so no plotting dependency reaches the deployable image): the Python clients in [`clients/`](clients/) render the JSON solve response with matplotlib/seaborn (`plot_solution`, `plot_objective`) and summarise it with polars. Built-in plots are provided for the Knapsack, TSP, Graph Coloring and Ticket Pricing experiments. See [`clients/README.md`](clients/README.md).
 
 ---
 

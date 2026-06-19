@@ -57,7 +57,7 @@ asyncio.run(main())
 `plot_solution(data, response)` dispatches on the problem and returns a matplotlib
 `Figure` (matplotlib + seaborn). `plot_objective(response)` shows the objective
 history with the improving iterations marked. `summarize(data, response)` returns
-a polars `DataFrame`. These mirror the Julia `plotting/` reference.
+a polars `DataFrame`.
 
 ## Examples
 
