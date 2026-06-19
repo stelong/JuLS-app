@@ -82,5 +82,15 @@ export
     n_decision_variables,
     decision_type,
     generate_domains,
-    create_dag
+    create_dag,
+
+    # Unified data loading (request payload -> experiment)
+    build_experiment,
+    experiment_type,
+    available_problems,
+    from_data,
+    data_schema,
+    FieldSpec,
+    InvalidInputError,
+    EXPERIMENT_REGISTRY
 end

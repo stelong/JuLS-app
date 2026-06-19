@@ -26,6 +26,8 @@ n_decision_variables(::Experiment) =
     error("You must implement the function n_decision_variables() for your experiment.")
 decision_type(::Experiment) = error("You must implement a type for the problem's decision variables.")
 
+include("data_loading.jl")
+
 include("knapsack/knapsack.jl")
 include("tsp/tsp.jl")
 include("graph_coloring/graph_coloring.jl")
@@ -92,6 +94,48 @@ default_init(::Experiment) = SimpleInitialization()
 default_neigh(e::Experiment) = ExhaustiveNeighbourhood(2, n_decision_variables(e))
 default_pick(::Experiment) = GreedyMoveSelection()
 default_using_cp(::Experiment) = true
+
+"""
+    EXPERIMENT_REGISTRY
+
+Maps the `problem` name used in a request to its concrete `Experiment` type. Add a
+new entry here (plus `from_data`/`data_schema` on the type) to expose a new problem.
+"""
+const EXPERIMENT_REGISTRY = Dict{String,DataType}(
+    "knapsack" => KnapsackExperiment,
+    "tsp" => TSPExperiment,
+    "graph_coloring" => GraphColoringExperiment,
+    "ticket_pricing" => TicketPricingExperiment,
+)
+
+"""
+    available_problems() -> Vector{String}
+
+Sorted list of registered problem names accepted by [`build_experiment`](@ref).
+"""
+available_problems() = sort(collect(keys(EXPERIMENT_REGISTRY)))
+
+"""
+    experiment_type(name) -> DataType
+
+Resolves a problem name to its `Experiment` type, or throws [`InvalidInputError`](@ref).
+"""
+function experiment_type(name::AbstractString)
+    key = String(name)
+    haskey(EXPERIMENT_REGISTRY, key) || throw(
+        InvalidInputError("unknown problem '$name'; available problems: $(join(available_problems(), ", "))"),
+    )
+    return EXPERIMENT_REGISTRY[key]
+end
+
+"""
+    build_experiment(name, data::AbstractDict) -> Experiment
+
+Uniform entry point: resolves `name` to an experiment type and builds it from `data`,
+validating the payload. Throws [`InvalidInputError`](@ref) on an unknown problem or a
+payload that does not match the experiment's schema.
+"""
+build_experiment(name::AbstractString, data::AbstractDict) = from_data(experiment_type(name), data)
 
 (::SimpleInitialization)(::Experiment, domains::Vector{Vector{<:DecisionValue}}) =
     error("You must implement at least the function (::SimpleInitialization)() for your experiment.")

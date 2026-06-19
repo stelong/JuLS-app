@@ -31,6 +31,16 @@ struct KnapsackExperiment <: Experiment
     values::Vector{Int}
     weights::Vector{Int}
 
+    # Raw field constructor (used by from_data; no file access)
+    KnapsackExperiment(
+        input_file::String,
+        α::Float64,
+        n_items::Int,
+        capacity::Int,
+        values::Vector{Int},
+        weights::Vector{Int},
+    ) = new(input_file, α, n_items, capacity, values, weights)
+
     KnapsackExperiment(input_file::String, α::Float64 = DEFAULT_PENALTY_PARAM) =
         open(input_file, "r") do f
             lines = readlines(f)
@@ -57,6 +67,27 @@ Decision is binary for item selection.
 """
 decision_type(::KnapsackExperiment) = BinaryDecisionValue
 generate_domains(e::KnapsackExperiment) = [[false, true] for _ = 1:e.n_items]
+
+function from_data(::Type{KnapsackExperiment}, data::AbstractDict)
+    capacity = as_integer(data, "capacity")
+    values = as_integer_array(data, "values")
+    weights = as_integer_array(data, "weights")
+    isempty(values) && throw(InvalidInputError("'values' must be non-empty"))
+    length(values) == length(weights) || throw(
+        InvalidInputError(
+            "'values' and 'weights' must have the same length (got $(length(values)) and $(length(weights)))",
+        ),
+    )
+    α = as_number(data, "penalty", DEFAULT_PENALTY_PARAM)
+    return KnapsackExperiment("", α, length(values), capacity, values, weights)
+end
+
+data_schema(::Type{KnapsackExperiment}) = [
+    FieldSpec("capacity", :integer, true, "Maximum total weight the knapsack can hold"),
+    FieldSpec("values", :integer_array, true, "Value of each item"),
+    FieldSpec("weights", :integer_array, true, "Weight of each item (same length as values)"),
+    FieldSpec("penalty", :number, false, "Constraint-violation penalty α (default $(DEFAULT_PENALTY_PARAM))"),
+]
 
 include("knapsack_init.jl")
 include("knapsack_dag.jl")

@@ -28,6 +28,10 @@ struct TSPExperiment <: Experiment
     distance_matrix::Matrix{Int}
     α::Float64
 
+    # Raw field constructor (used by from_data; no file access)
+    TSPExperiment(input_file::String, n_nodes::Int, distance_matrix::Matrix{Int}, α::Float64) =
+        new(input_file, n_nodes, distance_matrix, α)
+
     TSPExperiment(input_file::String, α::Float64 = DEFAULT_PENALTY_PARAM) =
         open(input_file, "r") do f
             lines = readlines(f)[2:end]
@@ -53,6 +57,18 @@ The value of a decision determines the position of the corresponding city in the
 """
 decision_type(::TSPExperiment) = IntDecisionValue
 generate_domains(e::TSPExperiment) = [collect(1:e.n_nodes) for _ = 1:e.n_nodes]
+
+function from_data(::Type{TSPExperiment}, data::AbstractDict)
+    coordinates = as_coordinate_array(data, "coordinates")
+    size(coordinates, 1) >= 2 || throw(InvalidInputError("'coordinates' must contain at least 2 cities"))
+    α = as_number(data, "penalty", DEFAULT_PENALTY_PARAM)
+    return TSPExperiment("", size(coordinates, 1), generate_distances(coordinates), α)
+end
+
+data_schema(::Type{TSPExperiment}) = [
+    FieldSpec("coordinates", :coordinate_array, true, "City positions as [[x, y], ...]; distances are L2 rounded to integers"),
+    FieldSpec("penalty", :number, false, "Constraint-violation penalty α (default $(DEFAULT_PENALTY_PARAM))"),
+]
 
 function generate_distances(coord::Array{Float64})
     n = size(coord)[1]

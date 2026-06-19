@@ -55,6 +55,19 @@ struct TicketPricingExperiment <: Experiment
     fixed_fees::Vector{Float64}
     demands::Matrix{Int}
 
+    # Raw field constructor (used by from_data; no file access)
+    TicketPricingExperiment(
+        input_file::String,
+        α::Float64,
+        n_retailers::Int,
+        n_tickets::Int,
+        price_tiers::Vector{Float64},
+        retailer_names::Vector{String},
+        commissions::Vector{Float64},
+        fixed_fees::Vector{Float64},
+        demands::Matrix{Int},
+    ) = new(input_file, α, n_retailers, n_tickets, price_tiers, retailer_names, commissions, fixed_fees, demands)
+
     TicketPricingExperiment(input_file::String, α::Float64 = DEFAULT_PENALTY_PARAM) =
         open(input_file, "r") do f
             lines = readlines(f)
@@ -110,6 +123,51 @@ price tier: `price * (1 - commission_j) - fixed_fee_j`.
 """
 unit_margin(e::TicketPricingExperiment, j::Int, tier::Int) =
     e.price_tiers[tier] * (1 - e.commissions[j]) - e.fixed_fees[j]
+
+function from_data(::Type{TicketPricingExperiment}, data::AbstractDict)
+    n_tickets = as_integer(data, "n_tickets")
+    price_tiers = as_number_array(data, "price_tiers")
+    n_tiers = length(price_tiers)
+    n_tiers >= 1 || throw(InvalidInputError("'price_tiers' must be non-empty"))
+
+    retailers = _require(data, "retailers")
+    (retailers isa AbstractVector && !isempty(retailers)) ||
+        throw(InvalidInputError("'retailers' must be a non-empty array"))
+    n_retailers = length(retailers)
+
+    names = Vector{String}(undef, n_retailers)
+    commissions = zeros(Float64, n_retailers)
+    fixed_fees = zeros(Float64, n_retailers)
+    demands = zeros(Int, n_retailers, n_tiers)
+    for (j, retailer) in enumerate(retailers)
+        retailer isa AbstractDict || throw(InvalidInputError("each entry of 'retailers' must be an object"))
+        names[j] = as_string(retailer, "name")
+        commissions[j] = as_number(retailer, "commission")
+        fixed_fees[j] = as_number(retailer, "fixed_fee")
+        retailer_demands = as_integer_array(retailer, "demands")
+        length(retailer_demands) == n_tiers || throw(
+            InvalidInputError(
+                "retailer '$(names[j])' has $(length(retailer_demands)) demands but there are $n_tiers price tiers",
+            ),
+        )
+        demands[j, :] = retailer_demands
+    end
+
+    α = as_number(data, "penalty", DEFAULT_PENALTY_PARAM)
+    return TicketPricingExperiment("", α, n_retailers, n_tickets, price_tiers, names, commissions, fixed_fees, demands)
+end
+
+data_schema(::Type{TicketPricingExperiment}) = [
+    FieldSpec("n_tickets", :integer, true, "Total number of tickets to allocate across retailers"),
+    FieldSpec("price_tiers", :number_array, true, "Shared price grid (T prices)"),
+    FieldSpec(
+        "retailers",
+        :object_array,
+        true,
+        "One object per retailer: {name, commission, fixed_fee, demands} where demands has length T",
+    ),
+    FieldSpec("penalty", :number, false, "Constraint-violation penalty α (default $(DEFAULT_PENALTY_PARAM))"),
+]
 
 include("ticket_pricing_dag.jl")
 include("ticket_pricing_init.jl")

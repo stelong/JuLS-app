@@ -32,6 +32,16 @@ struct GraphColoringExperiment <: Experiment
     edges::Vector{Tuple{Int,Int}}
     adjacency_matrix::BitMatrix
 
+    # Raw field constructor (used by from_data; no file access)
+    GraphColoringExperiment(
+        input_file::String,
+        max_color::Int,
+        α::Float64,
+        n_nodes::Int,
+        edges::Vector{Tuple{Int,Int}},
+        adjacency_matrix::BitMatrix,
+    ) = new(input_file, max_color, α, n_nodes, edges, adjacency_matrix)
+
     GraphColoringExperiment(input_file::String, max_color::Int, α::Float64 = DEFAULT_PENALTY_PARAM) =
         open(input_file, "r") do f
             lines = readlines(f)
@@ -62,6 +72,30 @@ Decision is the color selected for each node (indexed by Int)
 """
 decision_type(::GraphColoringExperiment) = IntDecisionValue
 generate_domains(e::GraphColoringExperiment) = [collect(1:e.max_color) for _ = 1:e.n_nodes]
+
+function from_data(::Type{GraphColoringExperiment}, data::AbstractDict)
+    n_nodes = as_integer(data, "n_nodes")
+    max_color = as_integer(data, "max_color")
+    edges = as_edge_array(data, "edges")
+    n_nodes >= 1 || throw(InvalidInputError("'n_nodes' must be at least 1"))
+    max_color >= 1 || throw(InvalidInputError("'max_color' must be at least 1"))
+    adjacency_matrix = falses(n_nodes, n_nodes)
+    for (a, b) in edges
+        (1 <= a <= n_nodes && 1 <= b <= n_nodes) ||
+            throw(InvalidInputError("edge ($a, $b) references a node outside 1..$n_nodes"))
+        adjacency_matrix[a, b] = true
+        adjacency_matrix[b, a] = true
+    end
+    α = as_number(data, "penalty", DEFAULT_PENALTY_PARAM)
+    return GraphColoringExperiment("", max_color, α, n_nodes, edges, adjacency_matrix)
+end
+
+data_schema(::Type{GraphColoringExperiment}) = [
+    FieldSpec("n_nodes", :integer, true, "Number of nodes (nodes are indexed 1..n_nodes)"),
+    FieldSpec("edges", :edge_array, true, "Edges as [[i, j], ...] with i, j in 1..n_nodes"),
+    FieldSpec("max_color", :integer, true, "Maximum number of colors available"),
+    FieldSpec("penalty", :number, false, "Constraint-violation penalty α (default $(DEFAULT_PENALTY_PARAM))"),
+]
 
 include("graph_coloring_init.jl")
 include("graph_coloring_dag.jl")
