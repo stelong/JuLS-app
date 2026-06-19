@@ -7,6 +7,7 @@ report
 test
 data
 plotting
+clients
 *.ipynb
 *.pdf
 *.png
