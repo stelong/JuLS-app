@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-    JuLSServer
+    App
 
-A thin HTTP layer exposing the JuLS solver over a RESTful JSON API. Kept as a
-separate environment (depends on JuLS + Oxygen) so the web stack lives only in
-the deployable app, not in the core solver library.
+A thin HTTP layer exposing the JuLS solver over a RESTful JSON API. Defined as a
+plain module inside the JuLS-app project (not a separate package); the web stack
+(Oxygen/HTTP/JSON3) is declared in the project's root Project.toml.
 
 Endpoints:
 - `GET  /health`   — liveness probe
@@ -24,7 +24,7 @@ Request body for `POST /solve`:
 `solve` is optional. `limit` may be an integer (iterations), `"auto"`, or one of
 `{"iterations": n}`, `{"time": seconds}`, `{"stagnation": patience, "max_iterations": n}`.
 """
-module JuLSServer
+module App
 
 using JuLS
 using Oxygen
@@ -188,7 +188,9 @@ function solve_handler(req::HTTP.Request)
         experiment = JuLS.build_experiment(problem, data)
         limit, using_cp, seed, solve_echo = parse_solve(solve_opts)
         model = JuLS.init_model(experiment; using_cp = using_cp)
-        rng = isnothing(seed) ? Random.GLOBAL_RNG : Random.MersenneTwister(seed)
+        # Per-request RNG (never the shared global) so concurrent solves on
+        # different threads stay independent and reproducible when a seed is given.
+        rng = isnothing(seed) ? Random.MersenneTwister() : Random.MersenneTwister(seed)
         elapsed = @elapsed JuLS.optimize!(model; limit = limit, rng = rng)
         return json_response(summarize(experiment, problem, model, solve_echo, elapsed))
     catch err
@@ -199,19 +201,77 @@ function solve_handler(req::HTTP.Request)
 end
 
 # ---------------------------------------------------------------------------
+# Warmup
+# ---------------------------------------------------------------------------
+# Minimal valid payloads, one per problem, used to exercise the full solve path
+# on startup so the first real user request doesn't pay the JIT cost. The same
+# routine is the PackageCompiler precompile workload (see server/precompile.jl).
+const WARMUP_PAYLOADS = Dict{String,Any}(
+    "knapsack" => Dict("capacity" => 5, "values" => [3, 4, 2], "weights" => [2, 3, 1]),
+    "tsp" => Dict("coordinates" => [[0, 0], [1, 0], [1, 1], [0, 1]]),
+    "graph_coloring" => Dict("n_nodes" => 3, "edges" => [[1, 2], [2, 3]], "max_color" => 3),
+    "ticket_pricing" => Dict(
+        "n_tickets" => 4,
+        "price_tiers" => [10, 20],
+        "retailers" => [Dict("name" => "A", "commission" => 0.1, "fixed_fee" => 1, "demands" => [2, 1])],
+    ),
+)
+
+"""
+    warmup(; verbose=false)
+
+Runs one tiny solve per registered problem through the real `solve_handler`, so
+the solver, JSON (de)serialization and response building are all compiled before
+the server accepts traffic. Also reused as the PackageCompiler precompile
+workload to bake these paths into the sysimage.
+"""
+function warmup(; verbose::Bool = false)
+    for problem in JuLS.available_problems()
+        haskey(WARMUP_PAYLOADS, problem) || continue
+        body = JSON3.write(
+            Dict(
+                "problem" => problem,
+                "data" => WARMUP_PAYLOADS[problem],
+                "solve" => Dict("limit" => 20, "seed" => 0),
+            ),
+        )
+        req = HTTP.Request("POST", "/solve", ["Content-Type" => "application/json"], Vector{UInt8}(body))
+        resp = solve_handler(req)
+        verbose && println("warmup ", problem, " -> HTTP ", resp.status)
+    end
+    return nothing
+end
+
+# ---------------------------------------------------------------------------
 # Server entry point
 # ---------------------------------------------------------------------------
 """
-    start_server(; host="0.0.0.0", port=8080, kwargs...)
+    start_server(; host="0.0.0.0", port=8080, parallel=true, warmup_on_start=true, kwargs...)
 
-Registers the routes and starts the HTTP server (blocking). Extra keyword
-arguments are forwarded to `Oxygen.serve`.
+Registers the routes and starts the HTTP server (blocking). With `parallel`,
+requests are handled across threads (`Oxygen.serveparallel`) so independent
+solves run concurrently — start Julia with multiple threads to benefit. Extra
+keyword arguments are forwarded to the underlying serve call.
 """
-function start_server(; host::String = "0.0.0.0", port::Int = 8080, kwargs...)
+function start_server(;
+    host::String = "0.0.0.0",
+    port::Int = 8080,
+    parallel::Bool = true,
+    warmup_on_start::Bool = true,
+    kwargs...,
+)
     Oxygen.get(health_handler, "/health")
     Oxygen.get(problems_handler, "/problems")
     Oxygen.post(solve_handler, "/solve")
-    Oxygen.serve(; host = host, port = port, kwargs...)
+
+    if warmup_on_start
+        @info "warming up solver"
+        warmup()
+        @info "warmup complete; serving" host port parallel threads = Threads.nthreads()
+    end
+
+    serve_fn = parallel ? Oxygen.serveparallel : Oxygen.serve
+    serve_fn(; host = host, port = port, kwargs...)
 end
 
 end # module JuLSServer
