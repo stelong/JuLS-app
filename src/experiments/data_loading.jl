@@ -172,7 +172,7 @@ data_schema(::Type{E}) where {E<:Experiment} =
 
 @testitem "build_experiment dispatches and validates problem name" begin
     @test Set(JuLS.available_problems()) ==
-          Set(["knapsack", "tsp", "graph_coloring", "ticket_pricing"])
+          Set(["knapsack", "tsp", "graph_coloring", "ticket_pricing", "production_planning"])
     @test JuLS.experiment_type("knapsack") == JuLS.KnapsackExperiment
     @test_throws JuLS.InvalidInputError JuLS.build_experiment("does_not_exist", Dict{String,Any}())
 end

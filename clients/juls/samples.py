@@ -28,4 +28,8 @@ SAMPLES: dict[str, dict] = {
             {"name": "Charlie", "commission": 0.08, "fixed_fee": 6, "demands": [9, 6, 5]},
         ],
     },
+    "production_planning": {
+        "capacity": 20,
+        "ideal_loads": [8, 6, 7, 5],
+    },
 }

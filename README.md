@@ -35,7 +35,7 @@ curl -X POST http://localhost:8080/solve \
       }'
 ```
 
-Built-in problems: `knapsack`, `tsp`, `graph_coloring`, `ticket_pricing`.
+Built-in problems: `knapsack`, `tsp`, `graph_coloring`, `ticket_pricing`, `production_planning`.
 
 ---
 
@@ -53,6 +53,7 @@ Built-in problems: `knapsack`, `tsp`, `graph_coloring`, `ticket_pricing`.
 {
   "problem": "knapsack",          // a registered problem name
   "data":    { ... },             // problem-specific fields (see GET /problems)
+  "id":      "my-run-1",          // optional; echoed back verbatim (string or number)
   "solve":   {                    // optional
     "limit":    200,              // int (iterations) | "auto" | {"time": 5} | {"stagnation": 20, "max_iterations": 1000}
     "using_cp": true,             // filter moves with CP (default true)
@@ -61,11 +62,16 @@ Built-in problems: `knapsack`, `tsp`, `graph_coloring`, `ticket_pricing`.
 }
 ```
 
+The optional `id` is returned unchanged in the response, so when you fire many
+solves concurrently you can match each result back to its request regardless of
+the order they complete in. If you omit it, the server generates a UUID.
+
 **Response** (abridged):
 
 ```jsonc
 {
-  "id": "…", "problem": "knapsack", "status": "feasible",
+  "id": "my-run-1",               // your id echoed back (or a generated UUID)
+  "problem": "knapsack", "status": "feasible",
   "solve":  { "limit": {"type": "iterations", "value": 200}, "using_cp": true, "seed": 0 },
   "result": {
     "objective": -15.0, "feasible": true,
@@ -119,6 +125,50 @@ A problem is a Julia `Experiment` type plus a data-loading contract, registered 
    ```
 
 That's it — `GET /problems` now advertises its schema and `POST /solve` accepts `"problem": "your_problem"`.
+
+### Worked example: a constrained quadratic
+
+[`production_planning`](src/experiments/production_planning/production_planning.jl) is a deliberately small problem added with exactly the recipe above — a good single-file template to copy.
+
+**The problem.** A fixed production quota must be split across a few plants without exceeding a shared `capacity`. Each plant must stay open (produce at least one unit), and running a plant away from its ideal load wastes money that grows *quadratically* with the gap. Minimise the total waste:
+
+```
+minimise  ∑ (load_i − ideal_i)²            ← a paraboloid (sum of squares)
+s.t.      ∑ load_i ≤ capacity              ← shared budget (the binding constraint)
+          1 ≤ load_i ≤ capacity            ← each plant stays open (positivity)
+```
+
+When the ideal loads together ask for more than the capacity, the solver has to find the best feasible compromise — pulling some plants below their sweet spot to fit the budget.
+
+**The interface.** Loads are integers, one decision variable per plant, and "produce at least one unit" is baked straight into the domain (`1..capacity`), so positivity needs no constraint:
+
+```julia
+n_decision_variables(e::ProductionPlanningExperiment) = e.n_plants
+decision_type(::ProductionPlanningExperiment) = IntDecisionValue
+generate_domains(e::ProductionPlanningExperiment) = [collect(1:e.capacity) for _ = 1:e.n_plants]
+(::SimpleInitialization)(e::ProductionPlanningExperiment) = fill(1, e.n_plants)  # start feasible
+```
+
+**The DAG.** The objective maps each load to its squared deviation with an `ElementInvariant` (a precomputed value→cost table — the trick that lets you express a non-linear per-variable cost without writing a custom invariant), turns it into a scalar with a unit `ScaleInvariant`, and sums those with an `ObjectiveInvariant`. The constraint sums the loads, compares them against `capacity` with a `ComparatorInvariant`, and penalises any overflow via a `StaticConstraintInvariant`. An `AggregatorInvariant` combines the two:
+
+```julia
+for i = 1:e.n_plants
+    squared_deviation = [IntDecisionValue((load - e.ideal_loads[i])^2) for load = 1:e.capacity]
+    deviation_node = add_invariant!(dag, ElementInvariant(i, squared_deviation); variable_parent_indexes = [i])
+    push!(cost_nodes, add_invariant!(dag, ScaleInvariant(1.0); invariant_parent_indexes = [deviation_node]))
+end
+objective_node = add_invariant!(dag, ObjectiveInvariant(); invariant_parent_indexes = cost_nodes)
+# ... ComparatorInvariant(capacity) over the loads → StaticConstraintInvariant(α) → AggregatorInvariant
+```
+
+**Solve it over HTTP** — ideals sum to 18 but only 10 units of capacity, so the budget binds:
+
+```bash
+curl -X POST http://localhost:8080/solve \
+  -H 'Content-Type: application/json' \
+  -d '{"problem": "production_planning", "data": {"capacity": 10, "ideal_loads": [6, 5, 7]}}'
+# → loads like [3, 2, 5] (sum 10), objective 22.0 — the minimal achievable waste
+```
 
 ---
 

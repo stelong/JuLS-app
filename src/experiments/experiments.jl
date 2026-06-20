@@ -32,6 +32,7 @@ include("knapsack/knapsack.jl")
 include("tsp/tsp.jl")
 include("graph_coloring/graph_coloring.jl")
 include("ticket_pricing/ticket_pricing.jl")
+include("production_planning/production_planning.jl")
 
 """
     init_model(
@@ -106,6 +107,7 @@ const EXPERIMENT_REGISTRY = Dict{String,DataType}(
     "tsp" => TSPExperiment,
     "graph_coloring" => GraphColoringExperiment,
     "ticket_pricing" => TicketPricingExperiment,
+    "production_planning" => ProductionPlanningExperiment,
 )
 
 """

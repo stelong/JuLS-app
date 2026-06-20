@@ -118,11 +118,27 @@ def _summarize_ticket_pricing(data: dict, response: dict) -> pl.DataFrame:
     )
 
 
+def _summarize_production_planning(data: dict, response: dict) -> pl.DataFrame:
+    ideal = list(data["ideal_loads"])
+    load = [int(v) for v in response["result"]["variables"]]
+    deviation = [load[i] - ideal[i] for i in range(len(ideal))]
+    return pl.DataFrame(
+        {
+            "plant": list(range(1, len(ideal) + 1)),
+            "ideal": ideal,
+            "load": load,
+            "deviation": deviation,
+            "waste": [d * d for d in deviation],
+        }
+    )
+
+
 _SUMMARIZERS = {
     "knapsack": _summarize_knapsack,
     "tsp": _summarize_tsp,
     "graph_coloring": _summarize_graph_coloring,
     "ticket_pricing": _summarize_ticket_pricing,
+    "production_planning": _summarize_production_planning,
 }
 
 
@@ -255,11 +271,34 @@ def plot_ticket_pricing(data: dict, response: dict) -> "plt.Figure":
     return fig
 
 
+def plot_production_planning(data: dict, response: dict) -> "plt.Figure":
+    df = _summarize_production_planning(data, response)
+    plants = df["plant"].to_list()
+    ideal = df["ideal"].to_list()
+    load = df["load"].to_list()
+    total_waste = int(df["waste"].sum())
+    used = sum(load)
+    js = np.arange(len(plants))
+
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    ax.bar(js - 0.2, ideal, width=0.35, color=(0.5, 0.5, 0.5, 0.7), label="ideal load")
+    ax.bar(js + 0.2, load, width=0.35, color="seagreen", label="assigned load")
+    for j in js:
+        if load[j] != ideal[j]:
+            ax.text(j + 0.2, load[j], f"{load[j] - ideal[j]:+d}", ha="center", va="bottom", fontsize=9)
+    ax.set_xticks(js, [f"plant {p}" for p in plants])
+    ax.set(ylabel="units", title=f"Production planning — waste = {total_waste}, used {used} / {data['capacity']}")
+    ax.legend()
+    fig.tight_layout()
+    return fig
+
+
 _PLOTTERS = {
     "knapsack": plot_knapsack,
     "tsp": plot_tsp,
     "graph_coloring": plot_graph_coloring,
     "ticket_pricing": plot_ticket_pricing,
+    "production_planning": plot_production_planning,
 }
 
 

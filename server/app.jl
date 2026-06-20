@@ -116,11 +116,13 @@ end
 # Response building
 # ---------------------------------------------------------------------------
 """
-    summarize(experiment, problem, model, solve_echo, elapsed) -> Dict
+    summarize(experiment, id, problem, model, solve_echo, elapsed) -> Dict
 
-Builds the comprehensive JSON-ready solution summary returned by `POST /solve`.
+Builds the comprehensive JSON-ready solution summary returned by `POST /solve`. `id`
+is echoed straight back to the caller so concurrent requests can be matched to their
+responses regardless of completion order.
 """
-function summarize(experiment, problem::AbstractString, model, solve_echo, elapsed::Float64)
+function summarize(experiment, id, problem::AbstractString, model, solve_echo, elapsed::Float64)
     metrics = model.run_metrics
     n_records = metrics.current_iteration
     feasible = !isnothing(model.best_solution)
@@ -130,7 +132,7 @@ function summarize(experiment, problem::AbstractString, model, solve_echo, elaps
     relative_times = [Dates.value(metrics.iteration_time[i] - t0) / 1000 for i = 1:n_records]
 
     return Dict{String,Any}(
-        "id" => string(uuid4()),
+        "id" => id,
         "problem" => problem,
         "status" => feasible ? "feasible" : "infeasible",
         "solve" => solve_echo,
@@ -195,6 +197,15 @@ function solve_handler(req::HTTP.Request)
     end
 
     body isa AbstractDict || return error_response(400, "request body must be a JSON object")
+    # Optional client-supplied correlation id, echoed back verbatim so callers can
+    # join responses to requests when solving many concurrently. A string or number
+    # is accepted; absent, a UUID is generated.
+    id = get(body, "id", nothing)
+    if isnothing(id)
+        id = string(uuid4())
+    elseif !(id isa AbstractString || id isa Number)
+        return error_response(400, "'id' must be a string or number")
+    end
     problem = get(body, "problem", nothing)
     problem isa AbstractString || return error_response(400, "'problem' (string) is required")
     data = get(body, "data", nothing)
@@ -210,7 +221,7 @@ function solve_handler(req::HTTP.Request)
         # different threads stay independent and reproducible when a seed is given.
         rng = isnothing(seed) ? Random.MersenneTwister() : Random.MersenneTwister(seed)
         elapsed = @elapsed JuLS.optimize!(model; limit = limit, rng = rng)
-        return json_response(summarize(experiment, problem, model, solve_echo, elapsed))
+        return json_response(summarize(experiment, id, problem, model, solve_echo, elapsed))
     catch err
         err isa JuLS.InvalidInputError && return error_response(400, err.msg)
         @error "solve failed" exception = (err, catch_backtrace())
@@ -228,6 +239,7 @@ const WARMUP_PAYLOADS = Dict{String,Any}(
     "knapsack" => Dict("capacity" => 5, "values" => [3, 4, 2], "weights" => [2, 3, 1]),
     "tsp" => Dict("coordinates" => [[0, 0], [1, 0], [1, 1], [0, 1]]),
     "graph_coloring" => Dict("n_nodes" => 3, "edges" => [[1, 2], [2, 3]], "max_color" => 3),
+    "production_planning" => Dict("capacity" => 6, "ideal_loads" => [3, 4]),
     "ticket_pricing" => Dict(
         "n_tickets" => 4,
         "price_tiers" => [10, 20],

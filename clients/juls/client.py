@@ -31,8 +31,10 @@ def _unwrap(resp: httpx.Response) -> dict[str, Any]:
     return resp.json()
 
 
-def _payload(problem: str, data: dict, solve_opts: dict) -> dict:
+def _payload(problem: str, data: dict, solve_opts: dict, id: Any = None) -> dict:
     payload: dict[str, Any] = {"problem": problem, "data": data}
+    if id is not None:
+        payload["id"] = id
     if solve_opts:
         payload["solve"] = solve_opts
     return payload
@@ -60,9 +62,13 @@ class JuLSClient:
         """Registered problems and the input schema each one expects."""
         return _unwrap(self._client.get("/problems"))
 
-    def solve(self, problem: str, data: dict, **solve_opts: Any) -> dict:
-        """Solve `problem` with `data`; keyword args (limit, using_cp, seed) form `solve`."""
-        return _unwrap(self._client.post("/solve", json=_payload(problem, data, solve_opts)))
+    def solve(self, problem: str, data: dict, *, id: Any = None, **solve_opts: Any) -> dict:
+        """Solve `problem` with `data`; keyword args (limit, using_cp, seed) form `solve`.
+
+        Pass `id` to have the server echo it back in the response, so results can be
+        matched to requests when several are in flight.
+        """
+        return _unwrap(self._client.post("/solve", json=_payload(problem, data, solve_opts, id)))
 
 
 class AsyncJuLSClient:
@@ -86,13 +92,18 @@ class AsyncJuLSClient:
     async def problems(self) -> dict:
         return _unwrap(await self._client.get("/problems"))
 
-    async def solve(self, problem: str, data: dict, **solve_opts: Any) -> dict:
-        return _unwrap(await self._client.post("/solve", json=_payload(problem, data, solve_opts)))
+    async def solve(self, problem: str, data: dict, *, id: Any = None, **solve_opts: Any) -> dict:
+        return _unwrap(await self._client.post("/solve", json=_payload(problem, data, solve_opts, id)))
 
     async def solve_many(self, requests: Iterable[dict]) -> list[dict]:
-        """Solve many requests at once. Each item is {"problem", "data", "solve"?}."""
+        """Solve many requests at once. Each item is {"problem", "data", "id"?, "solve"?}.
+
+        Pass an `id` per request to match each response to its request — `solve_many`
+        preserves input order, but an explicit id lets callers join results that arrive
+        out of order through other paths.
+        """
 
         async def _one(req: dict) -> dict:
-            return await self.solve(req["problem"], req["data"], **req.get("solve", {}))
+            return await self.solve(req["problem"], req["data"], id=req.get("id"), **req.get("solve", {}))
 
         return await asyncio.gather(*(_one(req) for req in requests))
