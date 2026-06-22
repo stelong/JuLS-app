@@ -5,9 +5,22 @@ JSON, so these are pure clients — nothing here is needed to run the solver.
 
 ## Install
 
+These clients are a [uv](https://docs.astral.sh/uv/) project. You do **not** need a
+system Python — uv fetches the pinned interpreter (see `.python-version`) for you.
+
 ```bash
-pip install -r clients/requirements/requirements.txt
+# 1. Install uv (macOS/Linux); see the docs for other methods
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 2. From the clients/ directory, create the env and install everything
+#    (downloads Python 3.12 if missing, then installs the locked deps)
+cd clients
+uv sync
 ```
+
+`uv sync` reads `pyproject.toml` + `uv.lock` and creates a `.venv/` with the exact,
+reproducible dependency set. To update the lock after editing dependencies, run
+`uv lock`.
 
 ## Run the server
 
@@ -17,6 +30,14 @@ docker run --rm -p 8080:8080 steplong/juls-app:latest
 ```
 
 ## Quick start
+
+Run any Python through the project env with `uv run` — no manual `activate` needed
+(it auto-syncs first). From the `clients/` directory:
+
+```bash
+uv run python            # REPL with juls importable
+uv run examples/solve_and_plot.py
+```
 
 ```python
 from juls import JuLSClient, plot_solution, summarize
@@ -55,13 +76,15 @@ asyncio.run(main())
 ## Plotting
 
 `plot_solution(data, response)` dispatches on the problem and returns a matplotlib
-`Figure` (matplotlib + seaborn). `plot_objective(response)` shows the objective
+`Figure`. `plot_objective(response)` shows the objective
 history with the improving iterations marked. `summarize(data, response)` returns
 a polars `DataFrame`.
 
 ## Examples
 
+From the `clients/` directory:
+
 ```bash
-python clients/examples/solve_and_plot.py   # solve all 4 problems, save PNGs to out/
-python clients/examples/concurrent_solves.py # sequential vs concurrent timing
+uv run examples/solve_and_plot.py     # solve all problems, save PNGs to examples/out/
+uv run examples/concurrent_solves.py  # sequential vs concurrent timing
 ```

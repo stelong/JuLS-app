@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Stefano Longobardi
 # SPDX-License-Identifier: Apache-2.0
-"""matplotlib/seaborn renderings of JuLS solutions.
+"""matplotlib renderings of JuLS solutions.
 
 Every function takes the request `data` you sent and the JSON `response` the
 server returned, and returns a matplotlib `Figure`. `summarize` returns a polars
@@ -18,9 +18,18 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
-import seaborn as sns
 
-sns.set_theme(style="whitegrid")
+# A light "whitegrid" look (formerly via seaborn) using only matplotlib rcParams.
+plt.rcParams.update(
+    {
+        "axes.grid": True,
+        "grid.color": "0.85",
+        "axes.axisbelow": True,
+        "axes.edgecolor": "0.8",
+        "figure.facecolor": "white",
+        "axes.facecolor": "white",
+    }
+)
 
 _SELECTED = "seagreen"
 _UNSELECTED = (0.5, 0.5, 0.5, 0.4)

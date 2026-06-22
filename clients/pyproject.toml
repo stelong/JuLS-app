@@ -1,0 +1,23 @@
+# Copyright (c) 2026 Stefano Longobardi
+# SPDX-License-Identifier: Apache-2.0
+
+[project]
+name = "juls-client"
+version = "0.2.0"
+description = "Python client and plotting helpers for the JuLS solve API"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = [
+    "httpx>=0.28",
+    "matplotlib>=3.9",
+    "polars>=1.0",
+    "numpy>=2.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["juls"]

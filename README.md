@@ -93,7 +93,7 @@ The objective is always **minimized** (e.g. knapsack returns `-15.0` for a maxim
 
 ## Python clients
 
-[`clients/`](clients/) provides a Python client (sync + async, with concurrent batch solving) and matplotlib/seaborn plotting from the JSON response. See [`clients/README.md`](clients/README.md).
+[`clients/`](clients/) provides a Python client (sync + async, with concurrent batch solving) and matplotlib plotting from the JSON response. Managed with [uv](https://docs.astral.sh/uv/). See [`clients/README.md`](clients/README.md).
 
 ```python
 from juls import JuLSClient, plot_solution

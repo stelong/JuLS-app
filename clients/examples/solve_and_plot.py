@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 """Solve every problem synchronously and save a solution + objective-history plot.
 
-    python clients/examples/solve_and_plot.py [BASE_URL]
+    uv run examples/solve_and_plot.py [BASE_URL]   # from the clients/ directory
 
-Requires a running server (default http://localhost:8080) and the deps in
-clients/requirements/requirements.txt. PNGs are written to clients/examples/out/.
+Requires a running server (default http://localhost:8080) and the project deps
+(`uv sync`). PNGs are written to clients/examples/out/.
 """
 import sys
 from pathlib import Path

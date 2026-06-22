@@ -1,8 +1,0 @@
-# Top-level client dependencies (unpinned). Lock with:
-#   pip-compile requirements/requirements.in
-# which writes the fully pinned requirements/requirements.txt.
-httpx
-matplotlib
-seaborn
-polars
-numpy
