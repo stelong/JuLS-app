@@ -21,7 +21,7 @@ where `unit_margin_j(t) = price_t * (1 - commission_j) - fixed_fee_j`, `x_j` is 
 allocation and `t_j` the price tier chosen for retailer j.
 
 # Fields
-- `input_file::String`: Path to file containing problem data
+- `input_file::String`: Unused; retained for compatibility (always `""`)
 - `α::Float64`: Penalty parameter for constraint violation
 - `n_retailers::Int`: Number of retailers (M)
 - `n_tickets::Int`: Total number of tickets to allocate (N)
@@ -31,14 +31,8 @@ allocation and `t_j` the price tier chosen for retailer j.
 - `fixed_fees::Vector{Float64}`: Fixed fee per ticket sold for each retailer
 - `demands::Matrix{Int}`: `demands[j, t]` is retailer j's demand at price tier t
 
-# File Format
-Expected input file format:
-
-n_retailers n_tickets n_tiers
-price_1 price_2 ... price_T
-name_1 commission_1 fixed_fee_1 demand_1_1 ... demand_1_T
-...
-name_M commission_M fixed_fee_M demand_M_1 ... demand_M_T
+Instances are built from a decoded payload via [`from_data`](@ref); see also
+[`load_sample`](@ref) for the bundled `easy`/`medium`/`hard` samples.
 
 # Decision Variables
 2M integer variables: variables 1..M are the allocations x_j ∈ {0, ..., N},
@@ -55,7 +49,7 @@ struct TicketPricingExperiment <: Experiment
     fixed_fees::Vector{Float64}
     demands::Matrix{Int}
 
-    # Raw field constructor (used by from_data; no file access)
+    # Raw field constructor (used by from_data)
     TicketPricingExperiment(
         input_file::String,
         α::Float64,
@@ -67,25 +61,6 @@ struct TicketPricingExperiment <: Experiment
         fixed_fees::Vector{Float64},
         demands::Matrix{Int},
     ) = new(input_file, α, n_retailers, n_tickets, price_tiers, retailer_names, commissions, fixed_fees, demands)
-
-    TicketPricingExperiment(input_file::String, α::Float64 = DEFAULT_PENALTY_PARAM) =
-        open(input_file, "r") do f
-            lines = readlines(f)
-            n_retailers, n_tickets, n_tiers = parse.(Int, split(lines[1]))
-            price_tiers = parse.(Float64, split(lines[2]))
-            @assert length(price_tiers) == n_tiers "The price grid must contain n_tiers prices"
-            names = Vector{String}(undef, n_retailers)
-            commissions, fixed_fees = zeros(n_retailers), zeros(n_retailers)
-            demands = zeros(Int, n_retailers, n_tiers)
-            for j = 1:n_retailers
-                fields = split(lines[j+2])
-                names[j] = fields[1]
-                commissions[j] = parse(Float64, fields[2])
-                fixed_fees[j] = parse(Float64, fields[3])
-                demands[j, :] = parse.(Int, fields[4:end])
-            end
-            return new(input_file, α, n_retailers, n_tickets, price_tiers, names, commissions, fixed_fees, demands)
-        end
 end
 
 """
@@ -187,7 +162,7 @@ default_using_cp(::TicketPricingExperiment) = false
 create_dag(e::TicketPricingExperiment) = create_ticket_pricing_dag(e)
 
 @testitem "TicketPricingExperiment initialization" begin
-    e = JuLS.TicketPricingExperiment(JuLS.PROJECT_ROOT * "/data/ticket_pricing/tp_3_300")
+    e = JuLS.load_sample("ticket_pricing", "hard")
 
     @test e.n_retailers == 3
     @test e.n_tickets == 300

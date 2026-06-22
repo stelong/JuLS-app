@@ -54,7 +54,7 @@ end
 
 @testitem "filter_moves(::CPEnumeration) for knapsack" begin
     using Random
-    e = JuLS.KnapsackExperiment(JuLS.PROJECT_ROOT * "/data/knapsack/ks_4_0")
+    e = JuLS.load_sample("knapsack", "easy")
     model = JuLS.init_model(e)
 
     moves = JuLS.LazyCartesianMoves(model.decision_variables)
@@ -87,7 +87,9 @@ end
 
 @testitem "filter_moves(::CPEnumeration) for graph coloring" begin
     using Random
-    e = JuLS.GraphColoringExperiment(JuLS.PROJECT_ROOT * "/data/graph_coloring/gc_4_1", 4)
+    data = JuLS._sample_dict("graph_coloring", "easy")
+    data["max_color"] = 4
+    e = JuLS.build_experiment("graph_coloring", data)
     model = JuLS.init_model(e)
 
     moves = JuLS.LazyCartesianMoves(model.decision_variables[[1, 2]])

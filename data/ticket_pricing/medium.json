@@ -1,0 +1,5 @@
+{
+  "n_tickets": 20,
+  "price_tiers": [50, 75, 100],
+  "retailers": [{"name": "Alpha", "commission": 0.1, "fixed_fee": 5, "demands": [12, 8, 4]}, {"name": "Bravo", "commission": 0.15, "fixed_fee": 3, "demands": [10, 7, 3]}, {"name": "Charlie", "commission": 0.08, "fixed_fee": 6, "demands": [9, 6, 5]}]
+}

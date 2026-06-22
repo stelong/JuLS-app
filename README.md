@@ -198,7 +198,9 @@ julia --threads=auto --project=.
 ```julia
 using JuLS
 
-experiment = KnapsackExperiment(joinpath(JuLS.PROJECT_ROOT, "data", "knapsack", "ks_4_0"))
+# Each problem ships easy/medium/hard sample instances under data/<problem>/<tier>.json
+# (the same payloads the Python client exposes via juls.samples):
+experiment = load_sample("knapsack", "hard")     # or build_experiment("knapsack", data)
 model = init_model(experiment; using_cp = true)
 optimize!(model; limit = IterationLimit(100))   # or limit = 100, TimeLimit(10), :auto, StagnationLimit(20)
 println(model.best_solution.objective)

@@ -343,7 +343,7 @@ end
 @testitem "optimize! with StagnationLimit" begin
     using Random
 
-    e = JuLS.KnapsackExperiment(JuLS.PROJECT_ROOT * "/data/knapsack/ks_4_0", 10.0)
+    e = JuLS.load_sample("knapsack", "easy")
 
     # :auto stops once the best solution stagnates, well before max_iterations
     model = JuLS.init_model(e)
@@ -364,7 +364,7 @@ end
 end
 
 @testitem "apply_move!(::Model, ::NoMove)" begin
-    experience = JuLS.KnapsackExperiment(JuLS.PROJECT_ROOT * "/data/knapsack/ks_4_0", 10.0)
+    experience = JuLS.load_sample("knapsack", "easy")
     model = JuLS.init_model(experience)
 
     decision_variables = copy(model.decision_variables)

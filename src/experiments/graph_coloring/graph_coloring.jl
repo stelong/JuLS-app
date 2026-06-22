@@ -7,7 +7,7 @@
 Represents a Graph Coloring Problem experiment instance.
 
 # Fields
-- `input_file::String`: Path to file containing problem data
+- `input_file::String`: Unused; retained for compatibility (always `""`)
 - `max_color::Int`: Maximum number of color for this problem
 - `α::Float64`: Penalty parameter for constraint violation
 - `n_nodes::Int`: Number of nodes
@@ -15,14 +15,8 @@ Represents a Graph Coloring Problem experiment instance.
 - `greedy_coloring::Vector{Int}`: Coloration with greedy algorithm
 - `edges::Vector{Tuple{Int,Int}}`: List of edges
 
-# File Format
-Expected input file format:
-
-n_nodes n_edges
-node_1_1 node_1_2 (edge 1)
-node_2_1 node_2_2 (edge 2)
-...
-node_n_1 node_n_2 (edge n)
+Instances are built from a decoded payload via [`from_data`](@ref); see also
+[`load_sample`](@ref) for the bundled `easy`/`medium`/`hard` samples.
 """
 struct GraphColoringExperiment <: Experiment
     input_file::String
@@ -32,7 +26,7 @@ struct GraphColoringExperiment <: Experiment
     edges::Vector{Tuple{Int,Int}}
     adjacency_matrix::BitMatrix
 
-    # Raw field constructor (used by from_data; no file access)
+    # Raw field constructor (used by from_data)
     GraphColoringExperiment(
         input_file::String,
         max_color::Int,
@@ -41,21 +35,6 @@ struct GraphColoringExperiment <: Experiment
         edges::Vector{Tuple{Int,Int}},
         adjacency_matrix::BitMatrix,
     ) = new(input_file, max_color, α, n_nodes, edges, adjacency_matrix)
-
-    GraphColoringExperiment(input_file::String, max_color::Int, α::Float64 = DEFAULT_PENALTY_PARAM) =
-        open(input_file, "r") do f
-            lines = readlines(f)
-            n_nodes, n_edges = parse.(Int, split(lines[1]))
-            edges = Tuple{Int,Int}[]
-            adjacency_matrix = falses(n_nodes, n_nodes)
-            for i = 1:n_edges
-                node1, node2 = parse.(Int, split(lines[i+1]))
-                push!(edges, Tuple([node1, node2]))
-                adjacency_matrix[node1, node2] = true
-                adjacency_matrix[node2, node1] = true
-            end
-            return new(input_file, max_color, α, n_nodes, edges, adjacency_matrix)
-        end
 end
 
 """
@@ -115,7 +94,9 @@ default_using_cp(::GraphColoringExperiment) = true
 create_dag(e::GraphColoringExperiment) = create_graph_coloring_dag(e.n_nodes, e.edges, e.max_color, e.α)
 
 @testitem "init_model(::GraphColoringExperiment)" begin
-    e = JuLS.GraphColoringExperiment(JuLS.PROJECT_ROOT * "/data/graph_coloring/gc_4_1", 4)
+    data = JuLS._sample_dict("graph_coloring", "easy")
+    data["max_color"] = 4
+    e = JuLS.build_experiment("graph_coloring", data)
     model = JuLS.init_model(e; init = JuLS.SimpleInitialization())
     JuLS.optimize!(model; limit = JuLS.IterationLimit(1))
 

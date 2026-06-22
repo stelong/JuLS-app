@@ -17,13 +17,15 @@ from juls import JuLSClient, plot_objective, plot_solution, summarize
 from juls.samples import SAMPLES
 
 OUT = Path(__file__).resolve().parent / "out"
+TIER = "medium"  # easy | medium | hard
 
 
 def main(base_url: str = "http://localhost:8080") -> None:
     OUT.mkdir(exist_ok=True)
     with JuLSClient(base_url) as client:
         print("health:", client.health())
-        for problem, data in SAMPLES.items():
+        for problem, tiers in SAMPLES.items():
+            data = tiers[TIER]
             res = client.solve(problem, data, limit="auto", seed=0)
             r = res["result"]
             print(f"\n== {problem} ==  objective={r['objective']}  feasible={r['feasible']}")

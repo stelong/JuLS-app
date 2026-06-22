@@ -55,6 +55,21 @@ plot_solution(data, res).savefig("knapsack.png", dpi=150)
 block, e.g. `limit=200`, `limit="auto"`, `limit={"time": 5}`, `using_cp=True`,
 `seed=0`. Use `client.problems()` to discover each problem's input schema.
 
+## Ready-made samples
+
+Each problem ships three instances — `easy`, `medium`, `hard` — loaded from the
+repo's `data/<problem>/<tier>.json` files. These are the exact same instances the
+Julia package loads via `JuLS.load_sample(problem, tier)`, so a sample is identical
+whether you drive it from Python or Julia.
+
+```python
+from juls import JuLSClient, sample, SAMPLES
+
+data = sample("knapsack", "hard")        # or SAMPLES["knapsack"]["hard"]
+with JuLSClient() as client:
+    res = client.solve("knapsack", data, limit="auto", seed=0)
+```
+
 ## Concurrency
 
 The server is multi-threaded, so many solves run in parallel:

@@ -7,21 +7,15 @@
 Represents a 0-1 Knapsack Problem experiment instance.
 
 # Fields
-- `input_file::String`: Path to file containing problem data
+- `input_file::String`: Unused; retained for compatibility (always `""`)
 - `α::Float64`: Penalty parameter for constraint violation
 - `n_items::Int`: Number of items
 - `capacity::Int`: Knapsack capacity
 - `values::Vector{Int}`: Values of items
 - `weights::Vector{Int}`: Weights of items
 
-# File Format
-Expected input file format:
-
-n_items capacity
-value1 weight1
-value2 weight2
-...
-value_n weight_n
+Instances are built from a decoded payload via [`from_data`](@ref); see also
+[`load_sample`](@ref) for the bundled `easy`/`medium`/`hard` samples.
 """
 struct KnapsackExperiment <: Experiment
     input_file::String
@@ -31,7 +25,7 @@ struct KnapsackExperiment <: Experiment
     values::Vector{Int}
     weights::Vector{Int}
 
-    # Raw field constructor (used by from_data; no file access)
+    # Raw field constructor (used by from_data)
     KnapsackExperiment(
         input_file::String,
         α::Float64,
@@ -40,17 +34,6 @@ struct KnapsackExperiment <: Experiment
         values::Vector{Int},
         weights::Vector{Int},
     ) = new(input_file, α, n_items, capacity, values, weights)
-
-    KnapsackExperiment(input_file::String, α::Float64 = DEFAULT_PENALTY_PARAM) =
-        open(input_file, "r") do f
-            lines = readlines(f)
-            n_items, capacity = parse.(Int, split(lines[1]))
-            values, weights = zeros(Int, n_items), zeros(Int, n_items)
-            for i = 1:n_items
-                values[i], weights[i] = parse.(Int, split(lines[i+1]))
-            end
-            return new(input_file, α, n_items, capacity, values, weights)
-        end
 end
 
 """
@@ -106,18 +89,6 @@ default_using_cp(::KnapsackExperiment) = true
 create_dag(e::KnapsackExperiment) = create_knapsack_dag(e.weights, e.values, e.capacity, e.α)
 
 
-@testitem "KnapsackExperiment α assignemnt" begin
-    e1 = JuLS.KnapsackExperiment(JuLS.PROJECT_ROOT * "/data/knapsack/ks_4_0", 5.0)
-    e2 = JuLS.KnapsackExperiment(JuLS.PROJECT_ROOT * "/data/knapsack/ks_4_0")
-
-    @test e1.α == 5.0
-    @test all(e1.values .== [8.0, 10.0, 15.0, 4.0])
-    @test all(e1.weights .== [4.0, 5.0, 8.0, 3.0])
-    @test e1.capacity == 11.0
-
-    @test e2.α == JuLS.DEFAULT_PENALTY_PARAM
-end
-
 @testitem "init_model() heuristic assignment" begin
     struct MockMoveSelectionHeuristic <: JuLS.MoveSelectionHeuristic end
 
@@ -137,7 +108,7 @@ end
         ]
     end
 
-    e = JuLS.KnapsackExperiment(JuLS.PROJECT_ROOT * "/data/knapsack/ks_4_0", 10.0)
+    e = JuLS.load_sample("knapsack", "easy")
     model = JuLS.init_model(
         e;
         init = JuLS.SimpleInitialization(),

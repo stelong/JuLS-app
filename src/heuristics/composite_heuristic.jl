@@ -209,7 +209,7 @@ end
 
     composite_heuristic = JuLS.CompositeNeighbourhoodHeuristic([heuristic1, heuristic2], [2, 3])
 
-    e = JuLS.KnapsackExperiment(JuLS.PROJECT_ROOT * "/data/knapsack/ks_4_0")
+    e = JuLS.load_sample("knapsack", "easy")
     m = JuLS.init_model(e)
 
     @test all(

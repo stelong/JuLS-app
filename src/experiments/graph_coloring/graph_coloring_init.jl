@@ -40,7 +40,9 @@ function (::GreedyInitialization)(e::GraphColoringExperiment)
 end
 
 @testitem "(::GreedyInitialization)(::GraphColoringExperiment)" begin
-    e = JuLS.GraphColoringExperiment(JuLS.PROJECT_ROOT * "/data/graph_coloring/gc_4_1", 2)
+    data = JuLS._sample_dict("graph_coloring", "easy")
+    data["max_color"] = 2
+    e = JuLS.build_experiment("graph_coloring", data)
     greedy = JuLS.GreedyInitialization()
     @test greedy(e) == [2, 1, 2, 2]
 end

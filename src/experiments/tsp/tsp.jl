@@ -7,20 +7,12 @@
 Represents a Traveling Salesman Problem (TSP) experiment instance.
 
 # Fields
-- `input_file::String`: Path to file containing city coordinates
+- `input_file::String`: Unused; retained for compatibility (always `""`)
 - `n_nodes::Int`: Number of cities
 - `distance_matrix::Matrix{Float64}`: Matrix of pairwise distances between cities. The distance is L2 rounded to the closest integer.
 
-# File Format
-Expected input file format:
-
-n_nodes
-x1 y1
-x2 y2
-...
-xn yn
-
-Where (xi,yi) are coordinates of city i.
+Instances are built from a decoded payload via [`from_data`](@ref); see also
+[`load_sample`](@ref) for the bundled `easy`/`medium`/`hard` samples.
 """
 struct TSPExperiment <: Experiment
     input_file::String
@@ -28,20 +20,9 @@ struct TSPExperiment <: Experiment
     distance_matrix::Matrix{Int}
     α::Float64
 
-    # Raw field constructor (used by from_data; no file access)
+    # Raw field constructor (used by from_data)
     TSPExperiment(input_file::String, n_nodes::Int, distance_matrix::Matrix{Int}, α::Float64) =
         new(input_file, n_nodes, distance_matrix, α)
-
-    TSPExperiment(input_file::String, α::Float64 = DEFAULT_PENALTY_PARAM) =
-        open(input_file, "r") do f
-            lines = readlines(f)[2:end]
-            n = length(lines)
-            coordinates = Array{Float64}(undef, (n, 2))
-            for i = 1:n
-                coordinates[i, :] = parse.(Float64, split(lines[i]))
-            end
-            return new(input_file, n, generate_distances(coordinates), α)
-        end
 end
 """
     n_decision_variables(e::TSPExperiment)
@@ -103,15 +84,14 @@ default_using_cp(::TSPExperiment) = false
 create_dag(e::TSPExperiment) = create_tsp_dag(e.distance_matrix, e.α)
 
 @testitem "TSPExperiment initialization" begin
-    e = JuLS.TSPExperiment(JuLS.PROJECT_ROOT * "/data/tsp/tsp_5_1")
+    e = JuLS.load_sample("tsp", "easy")
 
-    @test e.input_file == JuLS.PROJECT_ROOT * "/data/tsp/tsp_5_1"
     @test e.distance_matrix == [0 0 2 3 1; 0 0 2 3 1; 2 2 0 3 2; 3 3 3 0 2; 1 1 2 2 0]
     @test e.n_nodes == 5
 end
 
 @testitem "init_model(::TSPExperiment)" begin
-    e = JuLS.TSPExperiment(JuLS.PROJECT_ROOT * "/data/tsp/tsp_5_1")
+    e = JuLS.load_sample("tsp", "easy")
     model = JuLS.init_model(e)
 
 end

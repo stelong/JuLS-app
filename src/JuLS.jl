@@ -11,6 +11,7 @@ using CSV
 using DataStructures
 using Random
 using Combinatorics
+using JSON3
 
 
 const PROJECT_ROOT = pkgdir(JuLS)
@@ -90,6 +91,8 @@ export
     available_problems,
     from_data,
     data_schema,
+    load_sample,
+    sample_path,
     FieldSpec,
     InvalidInputError,
     EXPERIMENT_REGISTRY

@@ -17,7 +17,7 @@ function (::SimpleInitialization)(e::TicketPricingExperiment)
 end
 
 @testitem "SimpleInitialization(::TicketPricingExperiment)" begin
-    e = JuLS.TicketPricingExperiment(JuLS.PROJECT_ROOT * "/data/ticket_pricing/tp_3_300")
+    e = JuLS.load_sample("ticket_pricing", "hard")
     init_solution = JuLS.SimpleInitialization()(e)
 
     @test length(init_solution) == 6

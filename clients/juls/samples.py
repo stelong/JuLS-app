@@ -1,35 +1,52 @@
 # Copyright (c) 2026 Stefano Longobardi
 # SPDX-License-Identifier: Apache-2.0
-"""Ready-made example payloads, one per problem, for demos and smoke tests."""
+"""Ready-made example payloads — easy/medium/hard per problem — for demos and tests.
 
-SAMPLES: dict[str, dict] = {
-    "knapsack": {
-        "capacity": 50,
-        "values": [6, 5, 8, 9, 6, 7, 3, 4, 8, 2, 9, 5],
-        "weights": [2, 3, 6, 7, 5, 4, 1, 2, 6, 3, 8, 4],
-    },
-    "tsp": {
-        "coordinates": [
-            [0, 0], [1, 5], [5, 2], [6, 6], [8, 3],
-            [2, 8], [7, 9], [3, 3], [9, 1], [4, 7],
-        ],
-    },
-    "graph_coloring": {
-        "n_nodes": 6,
-        "edges": [[1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 1], [1, 4], [2, 5], [3, 6]],
-        "max_color": 3,
-    },
-    "ticket_pricing": {
-        "n_tickets": 20,
-        "price_tiers": [50, 75, 100],
-        "retailers": [
-            {"name": "Alpha", "commission": 0.10, "fixed_fee": 5, "demands": [12, 8, 4]},
-            {"name": "Bravo", "commission": 0.15, "fixed_fee": 3, "demands": [10, 7, 3]},
-            {"name": "Charlie", "commission": 0.08, "fixed_fee": 6, "demands": [9, 6, 5]},
-        ],
-    },
-    "production_planning": {
-        "capacity": 20,
-        "ideal_loads": [8, 6, 7, 5],
-    },
-}
+These are loaded straight from the repo's `data/<problem>/<tier>.json` files, the
+same instances the Julia package loads via `JuLS.load_sample(problem, tier)`, so a
+sample is identical whether you drive it from Python or Julia.
+
+    from juls import JuLSClient, sample, SAMPLES
+
+    data = sample("knapsack", "hard")     # or SAMPLES["knapsack"]["hard"]
+    with JuLSClient() as client:
+        res = client.solve("knapsack", data)
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+# clients/juls/samples.py -> repo root is parents[2]; data/ lives there.
+_DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+
+TIERS = ("easy", "medium", "hard")
+
+
+def _load() -> dict[str, dict[str, dict]]:
+    out: dict[str, dict[str, dict]] = {}
+    for problem_dir in sorted(p for p in _DATA_DIR.iterdir() if p.is_dir()):
+        tiers = {
+            tier: json.loads(f.read_text())
+            for tier in TIERS
+            if (f := problem_dir / f"{tier}.json").is_file()
+        }
+        if tiers:
+            out[problem_dir.name] = tiers
+    return out
+
+
+#: ``SAMPLES[problem][tier]`` -> the ``data`` payload for that instance.
+SAMPLES: dict[str, dict[str, dict]] = _load()
+
+
+def sample(problem: str, tier: str = "easy") -> dict:
+    """Return the data payload for `problem` at difficulty `tier` (easy|medium|hard)."""
+    if problem not in SAMPLES:
+        available = ", ".join(SAMPLES) or "(none)"
+        raise KeyError(f"unknown problem '{problem}'; available: {available}")
+    if tier not in SAMPLES[problem]:
+        raise KeyError(
+            f"no '{tier}' sample for '{problem}'; available tiers: {', '.join(SAMPLES[problem])}"
+        )
+    return SAMPLES[problem][tier]

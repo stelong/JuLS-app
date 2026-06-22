@@ -170,6 +170,50 @@ the API. Each concrete `Experiment` overrides this method.
 data_schema(::Type{E}) where {E<:Experiment} =
     error("data_schema is not implemented for $(E)")
 
+# ---------------------------------------------------------------------------
+# Ready-made sample instances (data/<problem>/<tier>.json)
+# ---------------------------------------------------------------------------
+const SAMPLE_TIERS = ("easy", "medium", "hard")
+
+"""
+    sample_path(problem, tier="easy") -> String
+
+Absolute path to the JSON sample instance for `problem` at difficulty `tier`
+(`"easy"`, `"medium"`, or `"hard"`), under the repo's `data/` folder. These are the
+exact payloads the Python client also ships (`juls.samples`), so an instance is the
+same whether driven from Julia or Python.
+"""
+sample_path(problem::AbstractString, tier::AbstractString = "easy") =
+    joinpath(PROJECT_ROOT, "data", problem, tier * ".json")
+
+"""
+    _sample_dict(problem, tier="easy") -> Dict{String,Any}
+
+Reads the JSON sample payload for `problem`/`tier` into a mutable top-level `Dict`,
+so callers (e.g. tests) can override a field such as `penalty` or `max_color`
+before passing it to [`build_experiment`](@ref).
+"""
+function _sample_dict(problem::AbstractString, tier::AbstractString = "easy")
+    path = sample_path(problem, tier)
+    isfile(path) ||
+        throw(InvalidInputError("no sample for problem '$problem' at tier '$tier' (looked in $path)"))
+    # JSON3.read yields a JSON3.Object with Symbol keys; rebuild a mutable Dict with
+    # String keys so it matches the from_data coercion helpers (which look up String
+    # keys) and lets callers override a top-level field before building.
+    return Dict{String,Any}(String(k) => v for (k, v) in pairs(JSON3.read(read(path, String))))
+end
+
+"""
+    load_sample(problem, tier="easy") -> Experiment
+
+Builds an experiment from the bundled JSON sample for `problem` at difficulty
+`tier`, reusing the same validated `from_data` path as the HTTP API:
+
+    model = init_model(load_sample("knapsack", "hard"))
+"""
+load_sample(problem::AbstractString, tier::AbstractString = "easy") =
+    build_experiment(problem, _sample_dict(problem, tier))
+
 @testitem "build_experiment dispatches and validates problem name" begin
     @test Set(JuLS.available_problems()) ==
           Set(["knapsack", "tsp", "graph_coloring", "ticket_pricing", "production_planning"])
@@ -177,21 +221,29 @@ data_schema(::Type{E}) where {E<:Experiment} =
     @test_throws JuLS.InvalidInputError JuLS.build_experiment("does_not_exist", Dict{String,Any}())
 end
 
-@testitem "from_data knapsack matches file and solves" begin
-    file_e = JuLS.KnapsackExperiment(JuLS.PROJECT_ROOT * "/data/knapsack/ks_4_0", 5.0)
+@testitem "load_sample builds and solves every bundled sample" begin
+    for problem in JuLS.available_problems(), tier in JuLS.SAMPLE_TIERS
+        @test isfile(JuLS.sample_path(problem, tier))
+        e = JuLS.load_sample(problem, tier)
+        @test JuLS.n_decision_variables(e) >= 1
+        model = JuLS.init_model(e)
+        JuLS.optimize!(model; limit = JuLS.IterationLimit(10))
+        @test model.run_metrics.current_iteration > 1
+    end
+
+    @test_throws JuLS.InvalidInputError JuLS.load_sample("knapsack", "impossible")
+end
+
+@testitem "from_data knapsack reads fields and penalty" begin
     data_e = JuLS.build_experiment(
         "knapsack",
         Dict{String,Any}("capacity" => 11, "values" => [8, 10, 15, 4], "weights" => [4, 5, 8, 3], "penalty" => 5.0),
     )
-    @test data_e.n_items == file_e.n_items
-    @test data_e.capacity == file_e.capacity
-    @test data_e.values == file_e.values
-    @test data_e.weights == file_e.weights
+    @test data_e.n_items == 4
+    @test data_e.capacity == 11
+    @test data_e.values == [8, 10, 15, 4]
+    @test data_e.weights == [4, 5, 8, 3]
     @test data_e.α == 5.0
-
-    model = JuLS.init_model(data_e)
-    JuLS.optimize!(model; limit = JuLS.IterationLimit(10))
-    @test !isnothing(model.best_solution)
 end
 
 @testitem "from_data knapsack rejects bad payloads" begin
@@ -215,70 +267,10 @@ end
     @test e.α == JuLS.DEFAULT_PENALTY_PARAM
 end
 
-@testitem "from_data tsp matches file" begin
-    file_e = JuLS.TSPExperiment(JuLS.PROJECT_ROOT * "/data/tsp/tsp_5_1")
-    data_e = JuLS.build_experiment(
-        "tsp",
-        Dict{String,Any}("coordinates" => [[0, 0], [0, 0.5], [0, 2], [3, 1], [1, 0]]),
-    )
-    @test data_e.n_nodes == file_e.n_nodes
-    @test data_e.distance_matrix == file_e.distance_matrix
-end
-
-@testitem "from_data graph_coloring matches file and validates edges" begin
-    file_e = JuLS.GraphColoringExperiment(JuLS.PROJECT_ROOT * "/data/graph_coloring/gc_4_1", 4)
-    data_e = JuLS.build_experiment(
-        "graph_coloring",
-        Dict{String,Any}("n_nodes" => 4, "max_color" => 4, "edges" => [[1, 2], [2, 3], [2, 4]]),
-    )
-    @test data_e.n_nodes == file_e.n_nodes
-    @test data_e.edges == file_e.edges
-    @test data_e.adjacency_matrix == file_e.adjacency_matrix
-
+@testitem "from_data graph_coloring validates edges" begin
     # an edge referencing a missing node is rejected
     @test_throws JuLS.InvalidInputError JuLS.build_experiment(
         "graph_coloring",
         Dict{String,Any}("n_nodes" => 3, "max_color" => 3, "edges" => [[1, 9]]),
     )
-end
-
-@testitem "from_data ticket_pricing matches file and solves" begin
-    file_e = JuLS.TicketPricingExperiment(JuLS.PROJECT_ROOT * "/data/ticket_pricing/tp_3_300")
-    data_e = JuLS.build_experiment(
-        "ticket_pricing",
-        Dict{String,Any}(
-            "n_tickets" => 300,
-            "price_tiers" => [40, 45, 50, 55, 60, 65, 70, 75, 80],
-            "retailers" => [
-                Dict{String,Any}(
-                    "name" => "MegaTickets",
-                    "commission" => 0.15,
-                    "fixed_fee" => 0.5,
-                    "demands" => [320, 256, 204, 163, 130, 104, 83, 66, 53],
-                ),
-                Dict{String,Any}(
-                    "name" => "PrimeSeats",
-                    "commission" => 0.25,
-                    "fixed_fee" => 1.0,
-                    "demands" => [140, 132, 124, 117, 110, 104, 98, 92, 87],
-                ),
-                Dict{String,Any}(
-                    "name" => "BudgetTix",
-                    "commission" => 0.1,
-                    "fixed_fee" => 0.25,
-                    "demands" => [220, 140, 89, 57, 36, 23, 15, 9, 6],
-                ),
-            ],
-        ),
-    )
-    @test data_e.n_retailers == file_e.n_retailers
-    @test data_e.n_tickets == file_e.n_tickets
-    @test data_e.price_tiers == file_e.price_tiers
-    @test data_e.retailer_names == file_e.retailer_names
-    @test data_e.commissions == file_e.commissions
-    @test data_e.demands == file_e.demands
-
-    model = JuLS.init_model(data_e)
-    JuLS.optimize!(model; limit = JuLS.IterationLimit(10))
-    @test !isnothing(model.best_solution)
 end

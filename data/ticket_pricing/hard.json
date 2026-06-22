@@ -1,0 +1,5 @@
+{
+  "n_tickets": 300,
+  "price_tiers": [40.0, 45.0, 50.0, 55.0, 60.0, 65.0, 70.0, 75.0, 80.0],
+  "retailers": [{"name": "MegaTickets", "commission": 0.15, "fixed_fee": 0.5, "demands": [320, 256, 204, 163, 130, 104, 83, 66, 53]}, {"name": "PrimeSeats", "commission": 0.25, "fixed_fee": 1.0, "demands": [140, 132, 124, 117, 110, 104, 98, 92, 87]}, {"name": "BudgetTix", "commission": 0.1, "fixed_fee": 0.25, "demands": [220, 140, 89, 57, 36, 23, 15, 9, 6]}]
+}

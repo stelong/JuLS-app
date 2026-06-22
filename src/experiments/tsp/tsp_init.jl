@@ -62,7 +62,7 @@ function (::ChristofidesInitialization)(e::TSPExperiment)
 end
 
 @testitem "(::GreedyInitialization)(::TSPExperiment)" begin
-    e = JuLS.TSPExperiment(JuLS.PROJECT_ROOT * "/data/tsp/tsp_5_1")
+    e = JuLS.load_sample("tsp", "easy")
     greedy = JuLS.GreedyInitialization()
     positions = greedy(e)
 
@@ -70,7 +70,7 @@ end
 end
 
 @testitem "(::ChristofidesInitialization)(::TSPExperiment)" begin
-    e = JuLS.TSPExperiment(JuLS.PROJECT_ROOT * "/data/tsp/tsp_5_1")
+    e = JuLS.load_sample("tsp", "easy")
     h = JuLS.ChristofidesInitialization()
     positions = h(e)
 

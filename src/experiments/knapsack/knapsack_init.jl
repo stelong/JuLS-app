@@ -35,7 +35,7 @@ function (::GreedyInitialization)(e::KnapsackExperiment)
 end
 
 @testitem "(::GreedyInitialization)(::KnapsackExperiment)" begin
-    e = JuLS.KnapsackExperiment(JuLS.PROJECT_ROOT * "/data/knapsack/ks_4_0")
+    e = JuLS.load_sample("knapsack", "easy")
     greedy = JuLS.GreedyInitialization()
     @test greedy(e) == [true, true, false, false]
 end

@@ -10,6 +10,7 @@
 """
 from .client import AsyncJuLSClient, JuLSClient, JuLSError
 from .plotting import plot_objective, plot_solution, summarize
+from .samples import SAMPLES, TIERS, sample
 
 __all__ = [
     "JuLSClient",
@@ -18,4 +19,7 @@ __all__ = [
     "plot_solution",
     "plot_objective",
     "summarize",
+    "SAMPLES",
+    "TIERS",
+    "sample",
 ]

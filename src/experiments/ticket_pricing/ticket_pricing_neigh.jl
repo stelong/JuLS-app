@@ -76,7 +76,7 @@ function get_neighbourhood(h::TicketTransferNeighbourhood, model::AbstractModel;
 end
 
 @testitem "get_neighbourhood(::TicketTransferNeighbourhood)" begin
-    e = JuLS.TicketPricingExperiment(JuLS.PROJECT_ROOT * "/data/ticket_pricing/tp_3_300")
+    e = JuLS.load_sample("ticket_pricing", "hard")
     model = JuLS.init_model(e)
 
     moves = JuLS.get_neighbourhood(JuLS.TicketTransferNeighbourhood(e, [10]), model)

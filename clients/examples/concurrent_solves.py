@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Fire many solves concurrently and compare against running them one by one.
 
-    python clients/examples/concurrent.py [BASE_URL]
+    uv run examples/concurrent_solves.py [BASE_URL]   # from the clients/ directory
 
 Sweeps the knapsack solve over several iteration limits and seeds, all in flight
 at once via AsyncJuLSClient.solve_many (the server runs them across threads).
@@ -15,9 +15,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from juls import AsyncJuLSClient, JuLSClient
-from juls.samples import SAMPLES
+from juls.samples import sample
 
-DATA = SAMPLES["knapsack"]
+DATA = sample("knapsack", "hard")
 REQUESTS = [
     {"problem": "knapsack", "data": DATA, "solve": {"limit": limit, "seed": seed}}
     for limit in (2000, 4000, 8000)

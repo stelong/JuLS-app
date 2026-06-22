@@ -116,7 +116,7 @@ _default_mask(h::GreedyNeighbourhood, model::Model) = trues(length(decision_vari
     using Dates
     using Random
 
-    e = JuLS.KnapsackExperiment(JuLS.PROJECT_ROOT * "/data/knapsack/ks_4_0")
+    e = JuLS.load_sample("knapsack", "easy")
     model = JuLS.init_model(e; neigh=JuLS.GreedyNeighbourhood())
 
     rng = MersenneTwister(0)
@@ -144,7 +144,7 @@ end
     using Random
     using Base.Threads
 
-    e = JuLS.KnapsackExperiment(JuLS.PROJECT_ROOT * "/data/knapsack/ks_19_0")
+    e = JuLS.load_sample("knapsack", "hard")
     model = JuLS.init_model(e; neigh=JuLS.GreedyNeighbourhood())
 
     @test length(JuLS.neighbourhood_heuristic(model).queue) == 0
@@ -159,7 +159,7 @@ end
     using Dates
     using Random
 
-    e = JuLS.KnapsackExperiment(JuLS.PROJECT_ROOT * "/data/knapsack/ks_19_0")
+    e = JuLS.load_sample("knapsack", "hard")
     model = JuLS.init_model(e; neigh=JuLS.GreedyNeighbourhood())
 
     @test [length(JuLS.eval_variable(variable_id, model)) for variable_id = 1:3] == [2, 2, 2]
@@ -171,7 +171,7 @@ end
     using Dates
     using Random
 
-    e = JuLS.KnapsackExperiment(JuLS.PROJECT_ROOT * "/data/knapsack/ks_19_0")
+    e = JuLS.load_sample("knapsack", "hard")
     model = JuLS.init_model(e; neigh=JuLS.GreedyNeighbourhood())
 
     variable_id = 1

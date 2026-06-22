@@ -66,7 +66,9 @@ coloring_neighbourhood(e::GraphColoringExperiment, complexity::Int = 2) =
     using Random
     rng = MersenneTwister(0)
 
-    e = JuLS.GraphColoringExperiment(JuLS.PROJECT_ROOT * "/data/graph_coloring/gc_20_1", 10)
+    data = JuLS._sample_dict("graph_coloring", "hard")
+    data["max_color"] = 10
+    e = JuLS.build_experiment("graph_coloring", data)
     model = JuLS.init_model(e)
     sampler = JuLS.GraphVariableSampler(e)
 

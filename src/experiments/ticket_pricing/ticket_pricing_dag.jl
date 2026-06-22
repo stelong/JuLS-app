@@ -248,7 +248,7 @@ end
 end
 
 @testitem "Ticket pricing DAG eval and commit" begin
-    e = JuLS.TicketPricingExperiment(JuLS.PROJECT_ROOT * "/data/ticket_pricing/tp_3_300")
+    e = JuLS.load_sample("ticket_pricing", "hard")
     dag = JuLS.create_ticket_pricing_dag(e)
 
     # 100 tickets each, all at the lowest tier (demands 320/140/220 all exceed 100)

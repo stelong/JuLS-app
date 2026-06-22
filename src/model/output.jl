@@ -158,7 +158,7 @@ write_output_variables(::AbstractDAGHelper, ::Vector{<:DecisionValue}, ::String)
     using Random
     using CSV
     using DataFrames
-    experience = JuLS.KnapsackExperiment(JuLS.PROJECT_ROOT * "/data/knapsack/ks_4_0", 10.0)
+    experience = JuLS.load_sample("knapsack", "easy")
 
     model =
         JuLS.init_model(experience; init=JuLS.SimpleInitialization(), neigh=JuLS.BinaryRandomNeighbourhood(50, 2))
