@@ -20,9 +20,16 @@ Pkg.activate(; temp = true)
 Pkg.add("PackageCompiler")
 using PackageCompiler
 
+# By default create_sysimage uses cpu_target = "native", which bakes in the exact
+# microarchitecture of the build machine (e.g. the GitHub Actions runner's AMD
+# Zen 4 / "znver4"). Such a sysimage is rejected at startup on any host whose CPU
+# lacks those features — including amd64 images run under QEMU on Apple Silicon.
+# default_app_cpu_target() returns a portable, multi-versioned target for the
+# current architecture, so the sysimage runs on any CPU of that arch.
 create_sysimage(
     [:JuLS, :Oxygen, :HTTP, :JSON3];
     project = ROOT,
     sysimage_path = get(ENV, "SYSIMAGE_PATH", joinpath(ROOT, "juls_sysimage.so")),
     precompile_execution_file = joinpath(@__DIR__, "precompile.jl"),
+    cpu_target = get(ENV, "JULIA_CPU_TARGET", PackageCompiler.default_app_cpu_target()),
 )
