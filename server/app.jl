@@ -157,7 +157,15 @@ Builds the comprehensive JSON-ready solution summary returned by `POST /solve`. 
 is echoed straight back to the caller so concurrent requests can be matched to their
 responses regardless of completion order.
 """
-function summarize(experiment, id, problem::AbstractString, model, solve_echo, elapsed::Float64)
+function summarize(
+    experiment,
+    id,
+    problem::AbstractString,
+    model,
+    solve_echo,
+    elapsed::Float64,
+    time_budget_exceeded::Bool = false,
+)
     metrics = model.run_metrics
     n_records = metrics.current_iteration
     feasible = !isnothing(model.best_solution)
@@ -182,6 +190,9 @@ function summarize(experiment, id, problem::AbstractString, model, solve_echo, e
         "metrics" => Dict{String,Any}(
             "iterations" => n_records - 1,
             "solve_time_seconds" => elapsed,
+            # true when the wall-clock budget stopped the solve before its limit;
+            # the returned solution is the best found within that budget
+            "time_budget_exceeded" => time_budget_exceeded,
             "initial_objective" => metrics.objective[1],
             "objective_history" => metrics.objective[1:n_records],
             "feasible_history" => metrics.feasible[1:n_records],
@@ -189,30 +200,6 @@ function summarize(experiment, id, problem::AbstractString, model, solve_echo, e
             "improving_iterations" => JuLS.best_solution_indexes(metrics),
         ),
     )
-end
-
-# ---------------------------------------------------------------------------
-# Deadline-bounded solve
-# ---------------------------------------------------------------------------
-"""
-    run_solve_with_deadline(model, limit, rng, seconds) -> (:ok|:timeout, elapsed)
-
-Runs `optimize!(model)` on a worker task and stops *waiting* on it after `seconds`
-of wall-clock time, returning `:timeout` so the handler can respond promptly
-instead of blocking on a pathological solve. Requires a multi-threaded server
-(`JULIA_NUM_THREADS` > 1, which the container sets) for the timer to fire while
-the CPU-bound solve runs; a timed-out task is abandoned but is still bounded by the
-iteration/time caps enforced in `parse_solve`, so it cannot run unbounded. Re-raises
-any solver error on the caller's task so it hits the handler's `catch`.
-"""
-function run_solve_with_deadline(model, limit, rng, seconds::Real)
-    t0 = time()
-    task = Threads.@spawn JuLS.optimize!(model; limit = limit, rng = rng)
-    if timedwait(() -> istaskdone(task), Float64(seconds); pollint = 0.02) != :ok
-        return :timeout, time() - t0
-    end
-    istaskfailed(task) && fetch(task)  # rethrows the solver error into the handler
-    return :ok, time() - t0
 end
 
 # ---------------------------------------------------------------------------
@@ -245,9 +232,10 @@ end
 
 Handles `POST /solve`: decodes the JSON body, builds the experiment, runs the
 solver, and returns the comprehensive solution summary. Malformed input yields
-HTTP 400; an oversized body 413; a solve exceeding the time budget 503; and an
-unexpected solver failure 500 (details logged, not returned). Error responses echo
-the request `id` when one was supplied.
+HTTP 400; an oversized body 413; and an unexpected solver failure 500 (details
+logged, not returned). A solve that hits the wall-clock budget still returns 200
+with the best solution found and `metrics.time_budget_exceeded = true`. Error
+responses echo the request `id` when one was supplied.
 """
 function solve_handler(req::HTTP.Request)
     if length(req.body) > MAX_BODY_BYTES
@@ -285,12 +273,12 @@ function solve_handler(req::HTTP.Request)
         # Per-request RNG (never the shared global) so concurrent solves on
         # different threads stay independent and reproducible when a seed is given.
         rng = isnothing(seed) ? Random.MersenneTwister() : Random.MersenneTwister(seed)
-        outcome, elapsed = run_solve_with_deadline(model, limit, rng, MAX_SOLVE_SECONDS)
-        if outcome === :timeout
-            @warn "solve timed out" id problem seconds = MAX_SOLVE_SECONDS
-            return error_response(503, "solve exceeded the maximum time budget of $MAX_SOLVE_SECONDS s", id)
-        end
-        return json_response(summarize(experiment, id, problem, model, solve_echo, elapsed))
+        t0 = time()
+        time_budget_exceeded = JuLS.optimize!(model; limit = limit, rng = rng, max_seconds = MAX_SOLVE_SECONDS)
+        elapsed = time() - t0
+        time_budget_exceeded &&
+            @warn "solve hit time budget; returning best-so-far" id problem seconds = MAX_SOLVE_SECONDS
+        return json_response(summarize(experiment, id, problem, model, solve_echo, elapsed, time_budget_exceeded))
     catch err
         err isa JuLS.InvalidInputError && return error_response(400, err.msg, id)
         # Log the full error server-side (with a correlation id) but never leak
@@ -417,7 +405,9 @@ end
         ),
     )
     @test ok.status == 200
-    @test decode(ok).id == 7
+    okbody = decode(ok)
+    @test okbody.id == 7
+    @test okbody.metrics.time_budget_exceeded == false
 end
 
 end # module JuLSServer

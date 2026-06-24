@@ -154,9 +154,12 @@ generate_input(::Type{Move}, ::AbstractModel, move::Move) = move
 """
     optimize!(model::AbstractModel;
              limit = IterationLimit(100),
-             rng = Random.GLOBAL_RNG)
+             rng = Random.GLOBAL_RNG,
+             max_seconds = Inf)
 
-Main optimization function that iteratively improves the solution.
+Main optimization function that iteratively improves the solution. Returns `true`
+when the run was stopped early by the `max_seconds` wall-clock backstop (best solution
+so far is kept), and `false` when it ran to the `limit`'s natural completion.
 
 # Arguments
 - `model::AbstractModel`: Model to optimize
@@ -164,29 +167,51 @@ Main optimization function that iteratively improves the solution.
   `StagnationLimit`), an integer (number of iterations), or `:auto` for early stopping
   once the best solution stops improving.
 - `rng`: Random number generator
+- `max_seconds`: Cooperative wall-clock budget checked between iterations; bounds the
+  total run time regardless of `limit`. Defaults to `Inf` (no backstop).
 """
-optimize!(model::AbstractModel; limit::Union{Limit,Int,Symbol}=IterationLimit(100), rng=Random.GLOBAL_RNG) =
-    optimize!(model, Move, Limit(limit), rng)
+optimize!(
+    model::AbstractModel;
+    limit::Union{Limit,Int,Symbol}=IterationLimit(100),
+    rng=Random.GLOBAL_RNG,
+    max_seconds::Real=Inf,
+) = optimize!(model, Move, Limit(limit), rng; max_seconds)
 
+# `max_seconds` is a cooperative wall-clock backstop checked between iterations: the
+# loop stops cleanly and keeps the best solution found so far, returning `true` when
+# the budget (rather than the limit) ended the run. Defaults to `Inf` (no backstop).
 function optimize!(
     model::AbstractModel,
     T::Type{<:MoveEvaluatorInput},
     iteration_limit::IterationLimit,
-    rng=Random.GLOBAL_RNG,
+    rng=Random.GLOBAL_RNG;
+    max_seconds::Real=Inf,
 )
     n_iterations = iteration_limit.n_iterations
     size_hint!(model, n_iterations)
+    deadline = time() + max_seconds
     for _ = 1:n_iterations
         optimize_one_iteration!(model, T; rng)
+        time() >= deadline && return true
     end
+    return false
 end
 
-function optimize!(model::AbstractModel, T::Type{<:MoveEvaluatorInput}, time_limit::TimeLimit, rng=Random.GLOBAL_RNG)
+# A TimeLimit is already wall-clock bounded, so `max_seconds` is redundant here
+# (the server caps the requested time below the backstop); accepted for a uniform signature.
+function optimize!(
+    model::AbstractModel,
+    T::Type{<:MoveEvaluatorInput},
+    time_limit::TimeLimit,
+    rng=Random.GLOBAL_RNG;
+    max_seconds::Real=Inf,
+)
     start!(time_limit)
     while !is_above(time_limit)
         size_hint!(model, 1)
         optimize_one_iteration!(model, T; rng)
     end
+    return false
 end
 
 _best_objective(model::AbstractModel) = isnothing(model.best_solution) ? Inf : model.best_solution.objective
@@ -201,11 +226,13 @@ function optimize!(
     model::AbstractModel,
     T::Type{<:MoveEvaluatorInput},
     limit::StagnationLimit,
-    rng=Random.GLOBAL_RNG,
+    rng=Random.GLOBAL_RNG;
+    max_seconds::Real=Inf,
 )
     best_objective = _best_objective(model)
     stagnation = 0
     n_iterations = 0
+    deadline = time() + max_seconds
     while n_iterations < limit.max_iterations && stagnation < limit.patience
         size_hint!(model, 1)
         optimize_one_iteration!(model, T; rng)
@@ -213,7 +240,9 @@ function optimize!(
         new_best = _best_objective(model)
         stagnation = new_best < best_objective ? 0 : stagnation + 1
         best_objective = min(best_objective, new_best)
+        time() >= deadline && return true
     end
+    return false
 end
 
 """
@@ -360,6 +389,23 @@ end
     # An integer limit behaves like IterationLimit
     model = JuLS.init_model(e)
     JuLS.optimize!(model; limit = 7, rng = Random.MersenneTwister(0))
+    @test model.run_metrics.current_iteration - 1 == 7
+end
+
+@testitem "optimize! max_seconds cooperative backstop" begin
+    using Random
+    e = JuLS.load_sample("knapsack", "easy")
+
+    # An already-elapsed budget stops the run after a single iteration and reports it
+    model = JuLS.init_model(e)
+    hit = JuLS.optimize!(model; limit = 10_000, rng = Random.MersenneTwister(0), max_seconds = 0.0)
+    @test hit == true
+    @test model.run_metrics.current_iteration - 1 <= 1
+
+    # With no backstop the limit runs to completion and reports a natural stop
+    model = JuLS.init_model(e)
+    hit = JuLS.optimize!(model; limit = 7, rng = Random.MersenneTwister(0))
+    @test hit == false
     @test model.run_metrics.current_iteration - 1 == 7
 end
 
