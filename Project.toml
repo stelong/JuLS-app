@@ -1,6 +1,6 @@
 name = "JuLS"
 uuid = "490cb39b-a817-4b17-9139-c18f0e28f0c3"
-version = "0.2.0"
+version = "0.1.0"
 authors = ["Stefano Longobardi <stefano.longobardi.8@gmail.com>"]
 
 [deps]

@@ -193,7 +193,7 @@ version = "1.14.3"
 deps = ["CSV", "Combinatorics", "DataFrames", "DataStructures", "Dates", "HTTP", "JSON3", "Oxygen", "Random", "StaticArrays", "Statistics", "StatsBase", "TestItems", "UUIDs"]
 path = "."
 uuid = "490cb39b-a817-4b17-9139-c18f0e28f0c3"
-version = "0.2.0"
+version = "0.1.0"
 
 [[deps.JuliaSyntaxHighlighting]]
 deps = ["StyledStrings"]

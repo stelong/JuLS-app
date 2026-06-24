@@ -3,7 +3,7 @@
 
 [project]
 name = "juls-client"
-version = "0.2.0"
+version = "0.1.0"
 description = "Python client and plotting helpers for the JuLS solve API"
 readme = "README.md"
 requires-python = ">=3.11"
