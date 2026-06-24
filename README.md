@@ -183,6 +183,16 @@ docker run --rm -p 8080:8080 <your-user>/juls-app
 
 The [`Dockerfile`](Dockerfile) is multi-stage: instantiate + precompile → build a PackageCompiler **sysimage** (so there's no first-request JIT latency) → slim runtime. On startup the server runs a warmup solve per problem before accepting traffic, and serves requests across threads (`JULIA_NUM_THREADS=auto`). Runtime is configurable via `HOST`, `PORT`, `PARALLEL`, `WARMUP`.
 
+**Request limits.** Each `/solve` request is bounded so a single caller can't exhaust the server. Requests above these limits are rejected (`400`/`413`), and any solve exceeding the time budget returns `503`. All are tunable via environment variables:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `JULS_MAX_BODY_BYTES` | `1000000` | Largest accepted request body (bytes) |
+| `JULS_MAX_ITERATIONS` | `100000` | Cap on a request's iteration budget |
+| `JULS_MAX_SOLVE_SECONDS` | `60.0` | Hard wall-clock ceiling on a single solve |
+
+The time ceiling relies on a multi-threaded server (`JULIA_NUM_THREADS` > 1, which the container sets) to interrupt a long-running solve.
+
 Pushing to `main` (or tagging `v*`) triggers [`.github/workflows/docker.yml`](.github/workflows/docker.yml), which builds and pushes the image to Docker Hub.
 
 ---

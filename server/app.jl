@@ -33,8 +33,22 @@ using HTTP
 using Dates
 using Random
 using UUIDs
+using TestItems  # provides the @testitem macro (a no-op outside the test runner)
 
 export start_server
+
+# ---------------------------------------------------------------------------
+# Resource limits
+# ---------------------------------------------------------------------------
+# Bounds that protect the server from unbounded or abusive requests. Read once at
+# module load and overridable via environment variables so they can be tuned per
+# deployment without a rebuild.
+#   JULS_MAX_BODY_BYTES     largest accepted request body            (default 1 MB)
+#   JULS_MAX_ITERATIONS     cap on a request's iteration budget      (default 100k)
+#   JULS_MAX_SOLVE_SECONDS  hard wall-clock ceiling on a single solve (default 60s)
+const MAX_BODY_BYTES = parse(Int, get(ENV, "JULS_MAX_BODY_BYTES", "1000000"))
+const MAX_ITERATIONS = parse(Int, get(ENV, "JULS_MAX_ITERATIONS", "100000"))
+const MAX_SOLVE_SECONDS = parse(Float64, get(ENV, "JULS_MAX_SOLVE_SECONDS", "60.0"))
 
 # ---------------------------------------------------------------------------
 # JSON helpers
@@ -48,12 +62,31 @@ to_native(x) = x
 json_response(obj, status::Int = 200) =
     HTTP.Response(status, ["Content-Type" => "application/json"]; body = JSON3.write(obj))
 
-error_response(status::Int, message::AbstractString) =
-    json_response(Dict("error" => message), status)
+function error_response(status::Int, message::AbstractString, id = nothing)
+    payload = Dict{String,Any}("error" => message)
+    isnothing(id) || (payload["id"] = id)
+    return json_response(payload, status)
+end
 
 # ---------------------------------------------------------------------------
 # Solve-option parsing
 # ---------------------------------------------------------------------------
+# Reject (rather than silently clamp) requests asking for more work than the
+# configured ceilings allow, so callers get an explicit, actionable 400.
+function _checked_iterations(n::Int)
+    n >= 1 || throw(JuLS.InvalidInputError("solve.limit iterations must be >= 1"))
+    n <= MAX_ITERATIONS ||
+        throw(JuLS.InvalidInputError("solve.limit iterations ($n) exceeds the maximum of $MAX_ITERATIONS"))
+    return n
+end
+
+function _checked_seconds(t::Float64)
+    t > 0 || throw(JuLS.InvalidInputError("solve.limit time must be > 0"))
+    t <= MAX_SOLVE_SECONDS ||
+        throw(JuLS.InvalidInputError("solve.limit time ($t s) exceeds the maximum of $MAX_SOLVE_SECONDS s"))
+    return t
+end
+
 """
     parse_solve(opts) -> (limit, using_cp, seed, echo)
 
@@ -72,20 +105,22 @@ function parse_solve(opts::AbstractDict)
             limit = :auto
             limit_echo = Dict{String,Any}("type" => "auto")
         elseif l isa Integer
-            limit = JuLS.IterationLimit(Int(l))
-            limit_echo = Dict{String,Any}("type" => "iterations", "value" => Int(l))
+            n = _checked_iterations(Int(l))
+            limit = JuLS.IterationLimit(n)
+            limit_echo = Dict{String,Any}("type" => "iterations", "value" => n)
         elseif l isa AbstractDict
             if haskey(l, "iterations")
-                n = Int(l["iterations"])
+                n = _checked_iterations(Int(l["iterations"]))
                 limit = JuLS.IterationLimit(n)
                 limit_echo = Dict{String,Any}("type" => "iterations", "value" => n)
             elseif haskey(l, "time")
-                t = Float64(l["time"])
+                t = _checked_seconds(Float64(l["time"]))
                 limit = JuLS.TimeLimit(t)
                 limit_echo = Dict{String,Any}("type" => "time", "seconds" => t)
             elseif haskey(l, "stagnation")
                 patience = Int(l["stagnation"])
-                max_it = haskey(l, "max_iterations") ? Int(l["max_iterations"]) : 10_000
+                patience >= 1 || throw(JuLS.InvalidInputError("solve.limit.stagnation must be >= 1"))
+                max_it = _checked_iterations(haskey(l, "max_iterations") ? Int(l["max_iterations"]) : 10_000)
                 limit = JuLS.StagnationLimit(patience; max_iterations = max_it)
                 limit_echo = Dict{String,Any}("type" => "stagnation", "patience" => patience, "max_iterations" => max_it)
             else
@@ -157,6 +192,30 @@ function summarize(experiment, id, problem::AbstractString, model, solve_echo, e
 end
 
 # ---------------------------------------------------------------------------
+# Deadline-bounded solve
+# ---------------------------------------------------------------------------
+"""
+    run_solve_with_deadline(model, limit, rng, seconds) -> (:ok|:timeout, elapsed)
+
+Runs `optimize!(model)` on a worker task and stops *waiting* on it after `seconds`
+of wall-clock time, returning `:timeout` so the handler can respond promptly
+instead of blocking on a pathological solve. Requires a multi-threaded server
+(`JULIA_NUM_THREADS` > 1, which the container sets) for the timer to fire while
+the CPU-bound solve runs; a timed-out task is abandoned but is still bounded by the
+iteration/time caps enforced in `parse_solve`, so it cannot run unbounded. Re-raises
+any solver error on the caller's task so it hits the handler's `catch`.
+"""
+function run_solve_with_deadline(model, limit, rng, seconds::Real)
+    t0 = time()
+    task = Threads.@spawn JuLS.optimize!(model; limit = limit, rng = rng)
+    if timedwait(() -> istaskdone(task), Float64(seconds); pollint = 0.02) != :ok
+        return :timeout, time() - t0
+    end
+    istaskfailed(task) && fetch(task)  # rethrows the solver error into the handler
+    return :ok, time() - t0
+end
+
+# ---------------------------------------------------------------------------
 # Handlers
 # ---------------------------------------------------------------------------
 """
@@ -185,10 +244,16 @@ end
     solve_handler(req::HTTP.Request)
 
 Handles `POST /solve`: decodes the JSON body, builds the experiment, runs the
-solver, and returns the comprehensive solution summary. Malformed input yields an
-HTTP 400 with an error message; solver failures yield an HTTP 500.
+solver, and returns the comprehensive solution summary. Malformed input yields
+HTTP 400; an oversized body 413; a solve exceeding the time budget 503; and an
+unexpected solver failure 500 (details logged, not returned). Error responses echo
+the request `id` when one was supplied.
 """
 function solve_handler(req::HTTP.Request)
+    if length(req.body) > MAX_BODY_BYTES
+        return error_response(413, "request body exceeds the maximum of $MAX_BODY_BYTES bytes")
+    end
+
     local body
     try
         body = to_native(JSON3.read(req.body))
@@ -220,12 +285,18 @@ function solve_handler(req::HTTP.Request)
         # Per-request RNG (never the shared global) so concurrent solves on
         # different threads stay independent and reproducible when a seed is given.
         rng = isnothing(seed) ? Random.MersenneTwister() : Random.MersenneTwister(seed)
-        elapsed = @elapsed JuLS.optimize!(model; limit = limit, rng = rng)
+        outcome, elapsed = run_solve_with_deadline(model, limit, rng, MAX_SOLVE_SECONDS)
+        if outcome === :timeout
+            @warn "solve timed out" id problem seconds = MAX_SOLVE_SECONDS
+            return error_response(503, "solve exceeded the maximum time budget of $MAX_SOLVE_SECONDS s", id)
+        end
         return json_response(summarize(experiment, id, problem, model, solve_echo, elapsed))
     catch err
-        err isa JuLS.InvalidInputError && return error_response(400, err.msg)
-        @error "solve failed" exception = (err, catch_backtrace())
-        return error_response(500, "internal solver error: " * sprint(showerror, err))
+        err isa JuLS.InvalidInputError && return error_response(400, err.msg, id)
+        # Log the full error server-side (with a correlation id) but never leak
+        # internal details to the caller.
+        @error "solve failed" id problem exception = (err, catch_backtrace())
+        return error_response(500, "internal solver error", id)
     end
 end
 
@@ -302,6 +373,51 @@ function start_server(;
 
     serve_fn = parallel ? Oxygen.serveparallel : Oxygen.serve
     serve_fn(; host = host, port = port, kwargs...)
+end
+
+@testitem "solve request guards (caps, body size, error hygiene)" begin
+    using JSON3, HTTP
+    include(joinpath(pkgdir(JuLS), "server", "app.jl"))
+
+    post(body) = App.solve_handler(
+        HTTP.Request("POST", "/solve", ["Content-Type" => "application/json"], Vector{UInt8}(body)),
+    )
+    decode(resp) = JSON3.read(resp.body)
+
+    # parse_solve rejects out-of-bounds budgets
+    @test_throws JuLS.InvalidInputError App.parse_solve(Dict("limit" => 0))
+    @test_throws JuLS.InvalidInputError App.parse_solve(Dict("limit" => App.MAX_ITERATIONS + 1))
+    @test_throws JuLS.InvalidInputError App.parse_solve(Dict("limit" => Dict("time" => App.MAX_SOLVE_SECONDS + 1)))
+    @test_throws JuLS.InvalidInputError App.parse_solve(Dict("limit" => Dict("time" => 0)))
+    # within bounds parses and echoes
+    limit, using_cp, seed, echo = App.parse_solve(Dict("limit" => 50))
+    @test limit == JuLS.IterationLimit(50)
+    @test echo["limit"]["value"] == 50
+
+    # oversized body -> 413, no solve attempted
+    big = repeat("a", App.MAX_BODY_BYTES + 1)
+    @test post(big).status == 413
+
+    # invalid-input error carries the client's correlation id and a clean message
+    resp = post(JSON3.write(Dict("id" => "req-42", "problem" => "knapsack", "data" => Dict("capacity" => 5))))
+    @test resp.status == 400
+    body = decode(resp)
+    @test body.id == "req-42"
+    @test !occursin("backtrace", lowercase(String(body.error)))
+
+    # a normal solve still succeeds through the deadline-bounded runner
+    ok = post(
+        JSON3.write(
+            Dict(
+                "id" => 7,
+                "problem" => "knapsack",
+                "data" => Dict("capacity" => 5, "values" => [3, 4, 2], "weights" => [2, 3, 1]),
+                "solve" => Dict("limit" => 20, "seed" => 0),
+            ),
+        ),
+    )
+    @test ok.status == 200
+    @test decode(ok).id == 7
 end
 
 end # module JuLSServer
