@@ -37,6 +37,8 @@ curl -X POST http://localhost:8080/solve \
 
 Built-in problems: `knapsack`, `tsp`, `graph_coloring`, `ticket_pricing`, `production_planning`.
 
+> **No API key needed by default.** Auth and the concurrency cap are opt-in (see _Auth & backpressure_ under [Build your own image](#build-your-own-image)) — out of the box the server is open, so the calls above work as-is for local trials. Set `JULS_API_KEY` only when you want to lock it down.
+
 ---
 
 ## HTTP API
