@@ -8,7 +8,7 @@
         res = client.solve("knapsack", {"capacity": 10, "values": [...], "weights": [...]})
     plot_solution({"capacity": 10, ...}, res).savefig("knapsack.png")
 """
-from .client import AsyncJuLSClient, JuLSClient, JuLSError
+from .client import TERMINAL_STATES, AsyncJuLSClient, JuLSClient, JuLSError
 from .plotting import plot_objective, plot_solution, summarize
 from .samples import SAMPLES, TIERS, sample
 
@@ -16,6 +16,7 @@ __all__ = [
     "JuLSClient",
     "AsyncJuLSClient",
     "JuLSError",
+    "TERMINAL_STATES",
     "plot_solution",
     "plot_objective",
     "summarize",

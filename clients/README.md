@@ -88,6 +88,49 @@ async def main():
 asyncio.run(main())
 ```
 
+## Async jobs
+
+For long or variable-duration solves, submit a job and poll instead of blocking. The
+client exposes the raw calls plus a `solve_async` convenience that submits then polls
+to completion:
+
+```python
+from juls import JuLSClient, TERMINAL_STATES, sample
+
+with JuLSClient() as client:
+    # one call: submit + poll until done (returns the final job record)
+    job = client.solve_async("tsp", sample("tsp", "hard"), limit={"time": 30})
+    print(job["status"], job["result"]["result"]["objective"])
+
+    # or drive it manually
+    sub = client.submit_job("knapsack", sample("knapsack", "hard"), limit="auto")
+    state = client.job(sub["job_id"])            # status: queued|running|<terminal>
+```
+
+`solve_async` returns the job once it reaches `succeeded` or `timed_out` (which keeps
+the best solution found), raises `JuLSError` on `failed`, and `TimeoutError` if it
+doesn't finish within `poll_timeout` (default 600 s). `AsyncJuLSClient` exposes the
+same `submit_job` / `job` / `solve_async` (awaitable).
+
+## Authentication
+
+When the server is started with `JULS_API_KEY`, pass the key — it's sent as
+`X-API-Key` on every request (probes excepted):
+
+```python
+with JuLSClient("http://localhost:8080", api_key="secret") as client:
+    client.solve("knapsack", sample("knapsack"), limit="auto")
+```
+
+## Probes & metrics
+
+```python
+with JuLSClient() as client:
+    client.health()     # liveness + registered problems
+    client.ready()      # True once warmed up (False while starting)
+    client.metrics()    # raw Prometheus exposition text
+```
+
 ## Plotting
 
 `plot_solution(data, response)` dispatches on the problem and returns a matplotlib
@@ -102,4 +145,5 @@ From the `clients/` directory:
 ```bash
 uv run examples/solve_and_plot.py     # solve all problems, save PNGs to examples/out/
 uv run examples/concurrent_solves.py  # sequential vs concurrent timing
+uv run examples/async_job.py          # submit a job and poll it to completion
 ```
