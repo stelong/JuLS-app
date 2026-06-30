@@ -11,7 +11,11 @@ plain module inside the JuLS-app project (not a separate package); the web stack
 Endpoints:
 - `GET  /health`   — liveness probe
 - `GET  /problems` — registered problems and their input schema
+- `GET  /metrics`  — Prometheus metrics (request counts, latency histogram, in-flight)
 - `POST /solve`    — solve a problem synchronously, returning the solution as JSON
+
+Each `/solve` request emits one structured JSON log line to stdout (id, problem,
+outcome, status, duration) and updates the `/metrics` counters.
 
 Request body for `POST /solve`:
 
@@ -49,6 +53,37 @@ export start_server
 const MAX_BODY_BYTES = parse(Int, get(ENV, "JULS_MAX_BODY_BYTES", "1000000"))
 const MAX_ITERATIONS = parse(Int, get(ENV, "JULS_MAX_ITERATIONS", "100000"))
 const MAX_SOLVE_SECONDS = parse(Float64, get(ENV, "JULS_MAX_SOLVE_SECONDS", "60.0"))
+
+# ---------------------------------------------------------------------------
+# Observability — Prometheus metrics (server/metrics.jl) and structured logging
+# ---------------------------------------------------------------------------
+include(joinpath(@__DIR__, "metrics.jl"))
+
+const _LOG_LOCK = ReentrantLock()
+
+"""
+    log_json(level, event; fields...)
+
+Emits a single structured JSON log line to stdout (one event per line, lock-guarded
+so concurrent requests don't interleave). Ops pipelines can parse these directly.
+"""
+function log_json(level::AbstractString, event::AbstractString; fields...)
+    record = Dict{String,Any}(
+        "ts" => Dates.format(now(UTC), dateformat"yyyy-mm-ddTHH:MM:SS.sssZ"),
+        "level" => level,
+        "event" => event,
+    )
+    for (k, v) in fields
+        record[String(k)] = v
+    end
+    line = JSON3.write(record)
+    lock(() -> println(line), _LOG_LOCK)
+    return nothing
+end
+
+# Keep the `problem` metric label low-cardinality: only the validated problem names
+# become labels; anything else (bad/missing problem) collapses to "unknown".
+_metric_problem(p) = (p isa AbstractString && p in JuLS.available_problems()) ? String(p) : "unknown"
 
 # ---------------------------------------------------------------------------
 # JSON helpers
@@ -237,19 +272,53 @@ logged, not returned). A solve that hits the wall-clock budget still returns 200
 with the best solution found and `metrics.time_budget_exceeded = true`. Error
 responses echo the request `id` when one was supplied.
 """
-function solve_handler(req::HTTP.Request)
+function solve_handler(req::HTTP.Request; instrument::Bool = true)
+    instrument && inc_in_flight!()
+    t0 = time()
+    local r
+    try
+        r = _solve(req)
+    finally
+        instrument && dec_in_flight!()
+    end
+    if instrument
+        duration = time() - t0
+        record_request!(_metric_problem(r.problem), r.outcome, duration)
+        level = r.resp.status >= 500 ? "error" : r.resp.status >= 400 ? "warn" : "info"
+        log_json(
+            level,
+            "solve";
+            id = r.id,
+            problem = r.problem,
+            outcome = r.outcome,
+            status = r.resp.status,
+            duration_seconds = round(duration; digits = 6),
+            r.log...,
+        )
+    end
+    return r.resp
+end
+
+# Inner handler: validates and solves, returning a NamedTuple
+# `(resp, problem, outcome, id, log)` so `solve_handler` can record metrics and log
+# once, at a single site. `outcome` is drawn from a fixed, low-cardinality set so it
+# is safe as a Prometheus label.
+function _solve(req::HTTP.Request)
+    fail(resp, outcome; problem = "unknown", id = nothing) =
+        (resp = resp, problem = problem, outcome = outcome, id = id, log = (;))
+
     if length(req.body) > MAX_BODY_BYTES
-        return error_response(413, "request body exceeds the maximum of $MAX_BODY_BYTES bytes")
+        return fail(error_response(413, "request body exceeds the maximum of $MAX_BODY_BYTES bytes"), "payload_too_large")
     end
 
     local body
     try
         body = to_native(JSON3.read(req.body))
     catch
-        return error_response(400, "request body must be valid JSON")
+        return fail(error_response(400, "request body must be valid JSON"), "invalid_request")
     end
 
-    body isa AbstractDict || return error_response(400, "request body must be a JSON object")
+    body isa AbstractDict || return fail(error_response(400, "request body must be a JSON object"), "invalid_request")
     # Optional client-supplied correlation id, echoed back verbatim so callers can
     # join responses to requests when solving many concurrently. A string or number
     # is accepted; absent, a UUID is generated.
@@ -257,14 +326,14 @@ function solve_handler(req::HTTP.Request)
     if isnothing(id)
         id = string(uuid4())
     elseif !(id isa AbstractString || id isa Number)
-        return error_response(400, "'id' must be a string or number")
+        return fail(error_response(400, "'id' must be a string or number"), "invalid_request")
     end
     problem = get(body, "problem", nothing)
-    problem isa AbstractString || return error_response(400, "'problem' (string) is required")
+    problem isa AbstractString || return fail(error_response(400, "'problem' (string) is required", id), "invalid_request"; id)
     data = get(body, "data", nothing)
-    data isa AbstractDict || return error_response(400, "'data' (object) is required")
+    data isa AbstractDict || return fail(error_response(400, "'data' (object) is required", id), "invalid_request"; problem, id)
     solve_opts = get(body, "solve", Dict{String,Any}())
-    solve_opts isa AbstractDict || return error_response(400, "'solve' must be an object")
+    solve_opts isa AbstractDict || return fail(error_response(400, "'solve' must be an object", id), "invalid_request"; problem, id)
 
     try
         experiment = JuLS.build_experiment(problem, data)
@@ -276,17 +345,32 @@ function solve_handler(req::HTTP.Request)
         t0 = time()
         time_budget_exceeded = JuLS.optimize!(model; limit = limit, rng = rng, max_seconds = MAX_SOLVE_SECONDS)
         elapsed = time() - t0
-        time_budget_exceeded &&
-            @warn "solve hit time budget; returning best-so-far" id problem seconds = MAX_SOLVE_SECONDS
-        return json_response(summarize(experiment, id, problem, model, solve_echo, elapsed, time_budget_exceeded))
+        summary = summarize(experiment, id, problem, model, solve_echo, elapsed, time_budget_exceeded)
+        feasible = summary["result"]["feasible"]
+        outcome = time_budget_exceeded ? "time_budget_exceeded" : feasible ? "success" : "infeasible"
+        return (
+            resp = json_response(summary),
+            problem = problem,
+            outcome = outcome,
+            id = id,
+            log = (iterations = summary["metrics"]["iterations"], feasible, time_budget_exceeded),
+        )
     catch err
-        err isa JuLS.InvalidInputError && return error_response(400, err.msg, id)
+        err isa JuLS.InvalidInputError && return fail(error_response(400, err.msg, id), "invalid_request"; problem, id)
         # Log the full error server-side (with a correlation id) but never leak
         # internal details to the caller.
         @error "solve failed" id problem exception = (err, catch_backtrace())
-        return error_response(500, "internal solver error", id)
+        return fail(error_response(500, "internal solver error", id), "error"; problem, id)
     end
 end
+
+"""
+    metrics_handler(::HTTP.Request)
+
+Serves `GET /metrics` in the Prometheus text exposition format.
+"""
+metrics_handler(::HTTP.Request) =
+    HTTP.Response(200, ["Content-Type" => "text/plain; version=0.0.4; charset=utf-8"]; body = render_metrics())
 
 # ---------------------------------------------------------------------------
 # Warmup
@@ -312,7 +396,8 @@ const WARMUP_PAYLOADS = Dict{String,Any}(
 Runs one tiny solve per registered problem through the real `solve_handler`, so
 the solver, JSON (de)serialization and response building are all compiled before
 the server accepts traffic. Also reused as the PackageCompiler precompile
-workload to bake these paths into the sysimage.
+workload to bake these paths into the sysimage. Runs with `instrument=false` so
+warmup solves don't pollute metrics or emit request logs.
 """
 function warmup(; verbose::Bool = false)
     for problem in JuLS.available_problems()
@@ -325,7 +410,7 @@ function warmup(; verbose::Bool = false)
             ),
         )
         req = HTTP.Request("POST", "/solve", ["Content-Type" => "application/json"], Vector{UInt8}(body))
-        resp = solve_handler(req)
+        resp = solve_handler(req; instrument = false)
         verbose && println("warmup ", problem, " -> HTTP ", resp.status)
     end
     return nothing
@@ -351,11 +436,13 @@ function start_server(;
 )
     Oxygen.get(health_handler, "/health")
     Oxygen.get(problems_handler, "/problems")
+    Oxygen.get(metrics_handler, "/metrics")
     Oxygen.post(solve_handler, "/solve")
 
     if warmup_on_start
         @info "warming up solver"
         warmup()
+        reset_metrics!()  # discard warmup solves so metrics start clean
         @info "warmup complete; serving" host port parallel threads = Threads.nthreads()
     end
 
@@ -408,6 +495,42 @@ end
     okbody = decode(ok)
     @test okbody.id == 7
     @test okbody.metrics.time_budget_exceeded == false
+end
+
+@testitem "metrics and structured observability" begin
+    using JSON3, HTTP
+    include(joinpath(pkgdir(JuLS), "server", "app.jl"))
+
+    post(body) = App.solve_handler(
+        HTTP.Request("POST", "/solve", ["Content-Type" => "application/json"], Vector{UInt8}(body)),
+    )
+
+    App.reset_metrics!()
+    post(
+        JSON3.write(
+            Dict(
+                "problem" => "knapsack",
+                "data" => Dict("capacity" => 5, "values" => [3, 4, 2], "weights" => [2, 3, 1]),
+                "solve" => Dict("limit" => 20, "seed" => 0),
+            ),
+        ),
+    )                                                                   # success
+    post(JSON3.write(Dict("problem" => "knapsack", "data" => Dict("capacity" => 5))))  # invalid_request
+    post(repeat("a", App.MAX_BODY_BYTES + 1))                          # payload_too_large
+
+    text = App.render_metrics()
+    @test occursin("juls_requests_total{problem=\"knapsack\",outcome=\"success\"} 1", text)
+    @test occursin("juls_requests_total{problem=\"knapsack\",outcome=\"invalid_request\"} 1", text)
+    # an oversized/garbage body must not create an arbitrary problem label
+    @test occursin("juls_requests_total{problem=\"unknown\",outcome=\"payload_too_large\"} 1", text)
+    # histogram totals reflect all three requests; gauge is back to zero
+    @test occursin("juls_request_duration_seconds_count 3", text)
+    @test occursin("juls_solves_in_flight 0", text)
+
+    # the endpoint serves the Prometheus exposition format
+    resp = App.metrics_handler(HTTP.Request("GET", "/metrics"))
+    @test resp.status == 200
+    @test any(h -> h[1] == "Content-Type" && occursin("text/plain", h[2]), resp.headers)
 end
 
 end # module JuLSServer

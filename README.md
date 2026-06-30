@@ -45,6 +45,7 @@ Built-in problems: `knapsack`, `tsp`, `graph_coloring`, `ticket_pricing`, `produ
 |--------|-------------|-------------|
 | `GET`  | `/health`   | Liveness probe; returns `ok` and the registered problem names. |
 | `GET`  | `/problems` | Input schema (fields, types, required flags) for every problem. |
+| `GET`  | `/metrics`  | Prometheus metrics (request counts, latency histogram, in-flight gauge). |
 | `POST` | `/solve`    | Solve a problem synchronously; returns the solution as JSON. |
 
 **Request body** for `POST /solve`:
@@ -192,6 +193,16 @@ The [`Dockerfile`](Dockerfile) is multi-stage: instantiate + precompile → buil
 | `JULS_MAX_SOLVE_SECONDS` | `60.0` | Wall-clock ceiling on a single solve |
 
 The time ceiling is enforced inside the solver loop (checked between iterations), so it bounds total run time regardless of the chosen `limit` without abandoning work.
+
+**Observability.** Every `/solve` request emits one structured JSON log line to stdout (`id`, `problem`, `outcome`, `status`, `duration_seconds`, and solve fields) for log pipelines to parse, and updates the Prometheus metrics at `GET /metrics`:
+
+- `juls_requests_total{problem,outcome}` — request counter (outcome ∈ `success`, `infeasible`, `time_budget_exceeded`, `invalid_request`, `payload_too_large`, `error`)
+- `juls_request_duration_seconds` — latency histogram
+- `juls_solves_in_flight` — gauge of in-progress solves
+
+```bash
+curl http://localhost:8080/metrics
+```
 
 Pushing to `main` (or tagging `v*`) triggers [`.github/workflows/docker.yml`](.github/workflows/docker.yml), which builds and pushes the image to Docker Hub.
 
