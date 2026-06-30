@@ -13,7 +13,13 @@ JuLS combines Constraint-Based Local Search (CBLS) and Constraint Programming (C
 Pull and run the image (no build required):
 
 ```bash
-docker run --rm -p 8080:8080 steplong/juls-app:latest
+docker run --rm --pull=always -p 8080:8080 steplong/juls-app:latest
+```
+
+`latest` is a moving tag and Docker/colima won't re-fetch it on its own, so an already-cached `latest` can be stale (e.g. missing newer endpoints). Use `--pull=always` as above, or run `docker pull steplong/juls-app:latest` first. For a reproducible run, pin an immutable commit tag instead — every push publishes `steplong/juls-app:sha-<short-commit>` (and `vX.Y.Z` for releases):
+
+```bash
+docker run --rm -p 8080:8080 steplong/juls-app:sha-f4c4bf1
 ```
 
 Then talk to it:

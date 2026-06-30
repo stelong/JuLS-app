@@ -25,9 +25,13 @@ reproducible dependency set. To update the lock after editing dependencies, run
 ## Run the server
 
 ```bash
-docker run --rm -p 8080:8080 steplong/juls-app:latest
+docker run --rm --pull=always -p 8080:8080 steplong/juls-app:latest
 # or locally:  julia --project=. --threads=auto server/run.jl
 ```
+
+`--pull=always` avoids a stale cached `latest` (a moving tag Docker won't re-fetch on its
+own) — otherwise an older image may 404 on newer endpoints like `/jobs`. For reproducibility,
+pin an immutable `steplong/juls-app:sha-<short-commit>` tag instead.
 
 ## Quick start
 
