@@ -12,13 +12,27 @@ const _HIST_BOUNDS = Float64[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5
 mutable struct Metrics
     lock::ReentrantLock
     requests::Dict{Tuple{String,String},Int}  # (problem, outcome) -> count
+    jobs::Dict{String,Int}                     # terminal job state -> count
     bucket_counts::Vector{Int}                 # cumulative #(duration <= bound)
     duration_sum::Float64
     duration_count::Int
 end
-Metrics() = Metrics(ReentrantLock(), Dict{Tuple{String,String},Int}(), zeros(Int, length(_HIST_BOUNDS)), 0.0, 0)
+Metrics() =
+    Metrics(ReentrantLock(), Dict{Tuple{String,String},Int}(), Dict{String,Int}(), zeros(Int, length(_HIST_BOUNDS)), 0.0, 0)
 
 const METRICS = Metrics()
+
+"""
+    record_job!(state)
+
+Counts one async job reaching a terminal `state` (`succeeded`, `failed`, `timed_out`).
+"""
+function record_job!(state::AbstractString)
+    lock(METRICS.lock) do
+        METRICS.jobs[state] = get(METRICS.jobs, state, 0) + 1
+    end
+    return nothing
+end
 
 """
     record_request!(problem, outcome, duration)
@@ -51,6 +65,7 @@ in the exposed metrics.
 function reset_metrics!()
     lock(METRICS.lock) do
         empty!(METRICS.requests)
+        empty!(METRICS.jobs)
         fill!(METRICS.bucket_counts, 0)
         METRICS.duration_sum = 0.0
         METRICS.duration_count = 0
@@ -77,6 +92,12 @@ function render_metrics(in_flight::Int)
         println(io, "# HELP juls_solves_in_flight Currently executing /solve requests.")
         println(io, "# TYPE juls_solves_in_flight gauge")
         println(io, "juls_solves_in_flight $in_flight")
+
+        println(io, "# HELP juls_jobs_total Async jobs by terminal state.")
+        println(io, "# TYPE juls_jobs_total counter")
+        for state in sort!(collect(keys(METRICS.jobs)))
+            println(io, "juls_jobs_total{state=\"$state\"} $(METRICS.jobs[state])")
+        end
 
         println(io, "# HELP juls_request_duration_seconds /solve wall-clock duration in seconds.")
         println(io, "# TYPE juls_request_duration_seconds histogram")

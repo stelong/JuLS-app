@@ -50,6 +50,8 @@ Built-in problems: `knapsack`, `tsp`, `graph_coloring`, `ticket_pricing`, `produ
 | `GET`  | `/problems` | Input schema (fields, types, required flags) for every problem. |
 | `GET`  | `/metrics`  | Prometheus metrics (request counts, latency histogram, in-flight gauge). |
 | `POST` | `/solve`    | Solve a problem synchronously; returns the solution as JSON. |
+| `POST` | `/jobs`     | Submit a solve asynchronously; returns a job id (`202`). |
+| `GET`  | `/jobs/{id}`| Poll an async job's status and result. |
 
 **Request body** for `POST /solve`:
 
@@ -92,6 +94,25 @@ the order they complete in. If you omit it, the server generates a UUID.
 ```
 
 The objective is always **minimized** (e.g. knapsack returns `-15.0` for a maximized value of 15). Invalid input returns HTTP `400` with an `{"error": …}` message.
+
+### Async jobs
+
+For long or variable-duration solves, submit asynchronously instead of blocking on `/solve`. The request body is identical to `/solve` and is validated up front (so bad input still fails fast with `400`/`413`); the call returns immediately with a job id you poll.
+
+```bash
+# submit -> 202
+curl -X POST http://localhost:8080/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{"problem": "tsp", "data": {...}, "solve": {"limit": {"time": 30}}}'
+# {"job_id": "0f9c…", "status": "queued", "poll": "/jobs/0f9c…"}
+
+# poll -> 200 (status is queued | running | succeeded | failed | timed_out)
+curl http://localhost:8080/jobs/0f9c…
+```
+
+Once `status` is `succeeded` (or `timed_out`, which keeps the best solution found), the response carries the same `result` object as `/solve`; `failed` carries an `{"error": …}`. Unknown ids return `404`.
+
+The job runs through the exact same solver path as `/solve` (including the wall-clock budget). Today the queue and worker run inside the container (all-in-one), but they sit behind small `JobQueue`/`JobStore` interfaces ([`server/jobs.jl`](server/jobs.jl)) so the backend can move to a managed queue + store (e.g. SQS with DynamoDB/S3) and a separate worker pool without changing the API.
 
 ---
 
@@ -201,10 +222,17 @@ The time ceiling is enforced inside the solver loop (checked between iterations)
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `JULS_API_KEY` | _(unset)_ | When set, `/solve` requires it via `X-API-Key: <key>` or `Authorization: Bearer <key>` (else `401`). Unset disables auth. |
+| `JULS_API_KEY` | _(unset)_ | When set, `/solve` and `/jobs` require it via `X-API-Key: <key>` or `Authorization: Bearer <key>` (else `401`). Unset disables auth. |
 | `JULS_MAX_CONCURRENT` | `4 × threads` | Max concurrent `/solve` requests; excess returns `429` with `Retry-After`. `0` disables the cap. |
 
 Probes and scrapes (`/health`, `/ready`, `/metrics`, `/problems`) are never authenticated.
+
+**Async workers.** The `/jobs` endpoint is served by in-process workers (Phase 1, all-in-one):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `JULS_RUN_WORKER` | `true` | Run in-process job workers. Set `false` on the API in a split API/worker deployment. |
+| `JULS_WORKER_CONCURRENCY` | `threads` | Number of worker tasks draining the queue. |
 
 **Observability.** Every `/solve` request emits one structured JSON log line to stdout (`id`, `problem`, `outcome`, `status`, `duration_seconds`, and solve fields) for log pipelines to parse, and updates the Prometheus metrics at `GET /metrics`:
 

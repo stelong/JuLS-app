@@ -9,13 +9,16 @@ plain module inside the JuLS-app project (not a separate package); the web stack
 (Oxygen/HTTP/JSON3) is declared in the project's root Project.toml.
 
 Endpoints:
-- `GET  /health`   — liveness probe
-- `GET  /problems` — registered problems and their input schema
-- `GET  /metrics`  — Prometheus metrics (request counts, latency histogram, in-flight)
-- `POST /solve`    — solve a problem synchronously, returning the solution as JSON
+- `GET  /health`    — liveness probe
+- `GET  /ready`     — readiness probe (200 once warmed up)
+- `GET  /problems`  — registered problems and their input schema
+- `GET  /metrics`   — Prometheus metrics (request counts, latency histogram, in-flight)
+- `POST /solve`     — solve a problem synchronously, returning the solution as JSON
+- `POST /jobs`      — submit a solve asynchronously, returning a job id (202)
+- `GET  /jobs/{id}` — poll an async job's status/result
 
-Each `/solve` request emits one structured JSON log line to stdout (id, problem,
-outcome, status, duration) and updates the `/metrics` counters.
+Each `/solve` and `/jobs` request emits one structured JSON log line to stdout (id,
+problem, outcome, status, duration) and updates the `/metrics` counters.
 
 Request body for `POST /solve`:
 
@@ -295,6 +298,17 @@ function summarize(
 end
 
 # ---------------------------------------------------------------------------
+# Async jobs (server/jobs.jl): model, pluggable store/queue, worker
+# ---------------------------------------------------------------------------
+include(joinpath(@__DIR__, "jobs.jl"))
+
+# Phase 1 in-process backends. Phase 2 swaps these for SQS/DynamoDB via JULS_QUEUE_BACKEND.
+const JOB_STORE = LocalStore()
+const JOB_QUEUE = LocalQueue()
+const RUN_WORKER = get(ENV, "JULS_RUN_WORKER", "true") != "false"
+const WORKER_CONCURRENCY = parse(Int, get(ENV, "JULS_WORKER_CONCURRENCY", string(Threads.nthreads())))
+
+# ---------------------------------------------------------------------------
 # Handlers
 # ---------------------------------------------------------------------------
 """
@@ -343,14 +357,14 @@ hits the wall-clock budget still returns 200 with the best solution found and
 one was supplied.
 """
 # Records one finished request (metrics + structured log) and returns its response.
-# Single instrumentation site for every `/solve` exit path.
-function _finalize(t0::Float64, resp::HTTP.Response, problem, outcome::AbstractString, id, logfields)
+# Single instrumentation site for the `/solve` and `/jobs` exit paths.
+function _finalize(t0::Float64, resp::HTTP.Response, problem, outcome::AbstractString, id, logfields; event = "solve")
     duration = time() - t0
     record_request!(_metric_problem(problem), outcome, duration)
     level = resp.status >= 500 ? "error" : resp.status >= 400 ? "warn" : "info"
     log_json(
         level,
-        "solve";
+        event;
         id = id,
         problem = problem,
         outcome = outcome,
@@ -359,6 +373,31 @@ function _finalize(t0::Float64, resp::HTTP.Response, problem, outcome::AbstractS
         logfields...,
     )
     return resp
+end
+
+# Shared body field extraction for `/solve` and `/jobs`. Returns a NamedTuple
+# `(ok, message, id, problem, data, solve_opts)`; on failure `ok=false` and
+# `message`/`id` carry a 400-able reason and the best-known correlation id.
+function _extract_request(body)
+    bad(message, id = nothing; problem = nothing) =
+        (ok = false, message = message, id = id, problem = problem, data = nothing, solve_opts = nothing)
+
+    body isa AbstractDict || return bad("request body must be a JSON object")
+    # Optional client-supplied correlation id, echoed back verbatim; a string or
+    # number is accepted, and a UUID is generated when absent.
+    id = get(body, "id", nothing)
+    if isnothing(id)
+        id = string(uuid4())
+    elseif !(id isa AbstractString || id isa Number)
+        return bad("'id' must be a string or number")
+    end
+    problem = get(body, "problem", nothing)
+    problem isa AbstractString || return bad("'problem' (string) is required", id)
+    data = get(body, "data", nothing)
+    data isa AbstractDict || return bad("'data' (object) is required", id; problem)
+    solve_opts = get(body, "solve", Dict{String,Any}())
+    solve_opts isa AbstractDict || return bad("'solve' must be an object", id; problem)
+    return (ok = true, message = "", id = id, problem = problem, data = data, solve_opts = solve_opts)
 end
 
 function solve_handler(req::HTTP.Request; instrument::Bool = true)
@@ -405,22 +444,10 @@ function _solve(req::HTTP.Request)
         return fail(error_response(400, "request body must be valid JSON"), "invalid_request")
     end
 
-    body isa AbstractDict || return fail(error_response(400, "request body must be a JSON object"), "invalid_request")
-    # Optional client-supplied correlation id, echoed back verbatim so callers can
-    # join responses to requests when solving many concurrently. A string or number
-    # is accepted; absent, a UUID is generated.
-    id = get(body, "id", nothing)
-    if isnothing(id)
-        id = string(uuid4())
-    elseif !(id isa AbstractString || id isa Number)
-        return fail(error_response(400, "'id' must be a string or number"), "invalid_request")
-    end
-    problem = get(body, "problem", nothing)
-    problem isa AbstractString || return fail(error_response(400, "'problem' (string) is required", id), "invalid_request"; id)
-    data = get(body, "data", nothing)
-    data isa AbstractDict || return fail(error_response(400, "'data' (object) is required", id), "invalid_request"; problem, id)
-    solve_opts = get(body, "solve", Dict{String,Any}())
-    solve_opts isa AbstractDict || return fail(error_response(400, "'solve' must be an object", id), "invalid_request"; problem, id)
+    ext = _extract_request(body)
+    ext.ok ||
+        return fail(error_response(400, ext.message, ext.id), "invalid_request"; problem = something(ext.problem, "unknown"), id = ext.id)
+    id, problem, data, solve_opts = ext.id, ext.problem, ext.data, ext.solve_opts
 
     try
         experiment = JuLS.build_experiment(problem, data)
@@ -461,6 +488,60 @@ metrics_handler(::HTTP.Request) = HTTP.Response(
     ["Content-Type" => "text/plain; version=0.0.4; charset=utf-8"];
     body = render_metrics(ADMISSION.active[]),
 )
+
+"""
+    jobs_submit_handler(req::HTTP.Request)
+
+Handles `POST /jobs`: validates the request synchronously (same guards as `/solve`,
+so malformed input fails fast with 400/413), enqueues an async job, and returns 202
+with the job id. Requires auth when enabled.
+"""
+function jobs_submit_handler(req::HTTP.Request)
+    t0 = time()
+    fin(resp, outcome, id) = _finalize(t0, resp, "unknown", outcome, id, (;); event = "job_submit")
+
+    _authorized(req) || return fin(error_response(401, "missing or invalid API key"), "unauthorized", nothing)
+    if length(req.body) > MAX_BODY_BYTES
+        return fin(error_response(413, "request body exceeds the maximum of $MAX_BODY_BYTES bytes"), "payload_too_large", nothing)
+    end
+    local body
+    try
+        body = to_native(JSON3.read(req.body))
+    catch
+        return fin(error_response(400, "request body must be valid JSON"), "invalid_request", nothing)
+    end
+    ext = _extract_request(body)
+    ext.ok || return fin(error_response(400, ext.message, ext.id), "invalid_request", ext.id)
+
+    # Validate solvability now (cheap) so a bad job is rejected at submit, not via polling.
+    try
+        JuLS.build_experiment(ext.problem, ext.data)
+        parse_solve(ext.solve_opts)
+    catch err
+        err isa JuLS.InvalidInputError && return fin(error_response(400, err.msg, ext.id), "invalid_request", ext.id)
+        @error "job submit failed" id = ext.id problem = ext.problem exception = (err, catch_backtrace())
+        return fin(error_response(500, "internal error", ext.id), "error", ext.id)
+    end
+
+    job = Job(ext.id, ext.problem, ext.data, ext.solve_opts)
+    save_job!(JOB_STORE, job)
+    enqueue!(JOB_QUEUE, job.id)
+    resp = json_response(Dict("job_id" => job.id, "status" => "queued", "poll" => "/jobs/" * job.id), 202)
+    return _finalize(t0, resp, ext.problem, "queued", ext.id, (;); event = "job_submit")
+end
+
+"""
+    job_status_handler(req::HTTP.Request, id)
+
+Handles `GET /jobs/{id}`: returns the job's status and, once finished, its result.
+404 when the id is unknown. Requires auth when enabled.
+"""
+function job_status_handler(req::HTTP.Request, id)
+    _authorized(req) || return error_response(401, "missing or invalid API key")
+    job = load_job(JOB_STORE, String(id))
+    isnothing(job) && return error_response(404, "job not found")
+    return json_response(job_to_response(job))
+end
 
 # ---------------------------------------------------------------------------
 # Warmup
@@ -529,6 +610,8 @@ function start_server(;
     Oxygen.get(problems_handler, "/problems")
     Oxygen.get(metrics_handler, "/metrics")
     Oxygen.post(solve_handler, "/solve")
+    Oxygen.post(jobs_submit_handler, "/jobs")
+    Oxygen.get(job_status_handler, "/jobs/{id}")
 
     if warmup_on_start
         @info "warming up solver"
@@ -537,6 +620,16 @@ function start_server(;
         @info "warmup complete; serving" host port parallel threads = Threads.nthreads() auth =
             !isempty(API_KEY[]) max_concurrent = ADMISSION.limit
     end
+
+    # All-in-one mode: run async-job workers in-process (Phase 1). In a split
+    # deployment the API sets JULS_RUN_WORKER=false and a separate service runs these.
+    if RUN_WORKER
+        for _ = 1:max(1, WORKER_CONCURRENCY)
+            Threads.@spawn run_worker(JOB_QUEUE, JOB_STORE)
+        end
+        @info "async workers started" workers = max(1, WORKER_CONCURRENCY)
+    end
+
     READY[] = true  # ready to serve (warmup, if any, has completed)
 
     serve_fn = parallel ? Oxygen.serveparallel : Oxygen.serve
@@ -665,6 +758,68 @@ end
 
     # Rejections are counted under a bounded label
     @test occursin("juls_requests_total{problem=\"unknown\",outcome=\"rejected\"} 1", App.render_metrics(0))
+end
+
+@testitem "async jobs: submit, process, poll" begin
+    using JSON3, HTTP
+    include(joinpath(pkgdir(JuLS), "server", "app.jl"))
+    submit(body) =
+        App.jobs_submit_handler(HTTP.Request("POST", "/jobs", ["Content-Type" => "application/json"], Vector{UInt8}(body)))
+    knapsack = Dict("capacity" => 5, "values" => [3, 4, 2], "weights" => [2, 3, 1])
+
+    # Submit: 202 + queued; bad input fails fast at submit; oversized body 413
+    r = submit(JSON3.write(Dict("problem" => "knapsack", "data" => knapsack, "solve" => Dict("limit" => 20, "seed" => 0))))
+    @test r.status == 202
+    jid = JSON3.read(r.body).job_id
+    @test App.load_job(App.JOB_STORE, jid).status == "queued"
+    @test submit(JSON3.write(Dict("problem" => "knapsack", "data" => Dict("capacity" => 5)))).status == 400
+    @test submit(repeat("a", App.MAX_BODY_BYTES + 1)).status == 413
+
+    # Worker drains the queue and runs the job to a successful terminal state
+    @test App.dequeue(App.JOB_QUEUE) == jid
+    App.process_job!(App.JOB_STORE, jid)
+    job = App.load_job(App.JOB_STORE, jid)
+    @test job.status == "succeeded"
+    @test job.result["result"]["feasible"] == true
+
+    # GET /jobs/{id}: result when done, 404 when unknown
+    resp = App.job_status_handler(HTTP.Request("GET", "/jobs/$jid", []), jid)
+    @test resp.status == 200
+    @test JSON3.read(resp.body).status == "succeeded"
+    @test haskey(JSON3.read(resp.body), :result)
+    @test App.job_status_handler(HTTP.Request("GET", "/jobs/nope", []), "nope").status == 404
+
+    # Idempotency: reprocessing a terminal job is a no-op (handles redelivery)
+    finished_at = job.finished_at
+    App.process_job!(App.JOB_STORE, jid)
+    @test App.load_job(App.JOB_STORE, jid).finished_at == finished_at
+
+    # Auth (when enabled) guards both job endpoints
+    App.API_KEY[] = "k"
+    @test submit(JSON3.write(Dict("problem" => "knapsack", "data" => knapsack))).status == 401
+    @test App.job_status_handler(HTTP.Request("GET", "/jobs/$jid", []), jid).status == 401
+    App.API_KEY[] = ""
+
+    # Time budget -> terminal "timed_out" with best-so-far kept. The iteration limit
+    # stays within MAX_ITERATIONS (so submit accepts it) but won't finish in 0.05s.
+    r2 = submit(
+        JSON3.write(
+            Dict(
+                "problem" => "tsp",
+                "data" => Dict("coordinates" => [[rand(), rand()] for _ = 1:30]),
+                "solve" => Dict("limit" => App.MAX_ITERATIONS),
+            ),
+        ),
+    )
+    jid2 = JSON3.read(r2.body).job_id
+    @test App.dequeue(App.JOB_QUEUE) == jid2
+    App.process_job!(App.JOB_STORE, jid2; max_seconds = 0.05)
+    @test App.load_job(App.JOB_STORE, jid2).status == "timed_out"
+
+    # Terminal states are counted
+    metrics = App.render_metrics(0)
+    @test occursin("juls_jobs_total{state=\"succeeded\"} 1", metrics)
+    @test occursin("juls_jobs_total{state=\"timed_out\"} 1", metrics)
 end
 
 end # module JuLSServer
