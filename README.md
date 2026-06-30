@@ -44,6 +44,7 @@ Built-in problems: `knapsack`, `tsp`, `graph_coloring`, `ticket_pricing`, `produ
 | Method | Path        | Description |
 |--------|-------------|-------------|
 | `GET`  | `/health`   | Liveness probe; returns `ok` and the registered problem names. |
+| `GET`  | `/ready`    | Readiness probe; `200` once warmup is complete, `503` while starting. |
 | `GET`  | `/problems` | Input schema (fields, types, required flags) for every problem. |
 | `GET`  | `/metrics`  | Prometheus metrics (request counts, latency histogram, in-flight gauge). |
 | `POST` | `/solve`    | Solve a problem synchronously; returns the solution as JSON. |
@@ -193,6 +194,15 @@ The [`Dockerfile`](Dockerfile) is multi-stage: instantiate + precompile → buil
 | `JULS_MAX_SOLVE_SECONDS` | `60.0` | Wall-clock ceiling on a single solve |
 
 The time ceiling is enforced inside the solver loop (checked between iterations), so it bounds total run time regardless of the chosen `limit` without abandoning work.
+
+**Auth & backpressure.** `POST /solve` can require an API key and caps how many solves run at once:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `JULS_API_KEY` | _(unset)_ | When set, `/solve` requires it via `X-API-Key: <key>` or `Authorization: Bearer <key>` (else `401`). Unset disables auth. |
+| `JULS_MAX_CONCURRENT` | `4 × threads` | Max concurrent `/solve` requests; excess returns `429` with `Retry-After`. `0` disables the cap. |
+
+Probes and scrapes (`/health`, `/ready`, `/metrics`, `/problems`) are never authenticated.
 
 **Observability.** Every `/solve` request emits one structured JSON log line to stdout (`id`, `problem`, `outcome`, `status`, `duration_seconds`, and solve fields) for log pipelines to parse, and updates the Prometheus metrics at `GET /metrics`:
 

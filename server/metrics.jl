@@ -12,17 +12,13 @@ const _HIST_BOUNDS = Float64[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5
 mutable struct Metrics
     lock::ReentrantLock
     requests::Dict{Tuple{String,String},Int}  # (problem, outcome) -> count
-    in_flight::Int
     bucket_counts::Vector{Int}                 # cumulative #(duration <= bound)
     duration_sum::Float64
     duration_count::Int
 end
-Metrics() = Metrics(ReentrantLock(), Dict{Tuple{String,String},Int}(), 0, zeros(Int, length(_HIST_BOUNDS)), 0.0, 0)
+Metrics() = Metrics(ReentrantLock(), Dict{Tuple{String,String},Int}(), zeros(Int, length(_HIST_BOUNDS)), 0.0, 0)
 
 const METRICS = Metrics()
-
-inc_in_flight!() = lock(() -> METRICS.in_flight += 1, METRICS.lock)
-dec_in_flight!() = lock(() -> METRICS.in_flight -= 1, METRICS.lock)
 
 """
     record_request!(problem, outcome, duration)
@@ -55,7 +51,6 @@ in the exposed metrics.
 function reset_metrics!()
     lock(METRICS.lock) do
         empty!(METRICS.requests)
-        METRICS.in_flight = 0
         fill!(METRICS.bucket_counts, 0)
         METRICS.duration_sum = 0.0
         METRICS.duration_count = 0
@@ -64,11 +59,13 @@ function reset_metrics!()
 end
 
 """
-    render_metrics() -> String
+    render_metrics(in_flight) -> String
 
 Serializes the current metrics in the Prometheus text exposition format (v0.0.4).
+`in_flight` (the current number of admitted, executing solves) is supplied by the
+caller, since admission control owns that counter.
 """
-function render_metrics()
+function render_metrics(in_flight::Int)
     io = IOBuffer()
     lock(METRICS.lock) do
         println(io, "# HELP juls_requests_total Total /solve requests by problem and outcome.")
@@ -79,7 +76,7 @@ function render_metrics()
 
         println(io, "# HELP juls_solves_in_flight Currently executing /solve requests.")
         println(io, "# TYPE juls_solves_in_flight gauge")
-        println(io, "juls_solves_in_flight $(METRICS.in_flight)")
+        println(io, "juls_solves_in_flight $in_flight")
 
         println(io, "# HELP juls_request_duration_seconds /solve wall-clock duration in seconds.")
         println(io, "# TYPE juls_request_duration_seconds histogram")

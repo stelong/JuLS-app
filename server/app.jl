@@ -86,6 +86,63 @@ end
 _metric_problem(p) = (p isa AbstractString && p in JuLS.available_problems()) ? String(p) : "unknown"
 
 # ---------------------------------------------------------------------------
+# Auth, admission control, readiness
+# ---------------------------------------------------------------------------
+# Optional API key for `POST /solve`. Empty (the default) disables auth so local dev
+# and probes work unchanged; set `JULS_API_KEY` to require it. Held in a `Ref` so it
+# can be toggled in tests.
+const API_KEY = Ref(get(ENV, "JULS_API_KEY", ""))
+
+# Backpressure: bound the number of concurrently executing `/solve` requests so a
+# burst can't saturate every thread. `limit <= 0` disables rejection (still counts
+# in-flight for the gauge). Default scales with the thread pool. `limit` is mutable
+# for tests.
+mutable struct Admission
+    limit::Int
+    active::Threads.Atomic{Int}
+end
+const ADMISSION =
+    Admission(parse(Int, get(ENV, "JULS_MAX_CONCURRENT", string(4 * Threads.nthreads()))), Threads.Atomic{Int}(0))
+
+# Becomes true once the server has warmed up and is ready to serve `/solve` traffic.
+const READY = Threads.Atomic{Bool}(false)
+
+# Constant-time string comparison so API-key checks don't leak the key via timing.
+# (The length check leaks only the key length, which is standard and acceptable.)
+function _constant_time_eq(a::AbstractString, b::AbstractString)
+    ab, bb = codeunits(a), codeunits(b)
+    length(ab) == length(bb) || return false
+    diff = 0x00
+    @inbounds for i in eachindex(ab)
+        diff |= ab[i] ⊻ bb[i]
+    end
+    return diff == 0x00
+end
+
+# Accepts the key via `X-API-Key: <key>` or `Authorization: Bearer <key>`.
+function _authorized(req::HTTP.Request)
+    isempty(API_KEY[]) && return true
+    provided = HTTP.header(req, "X-API-Key", "")
+    if isempty(provided)
+        auth = HTTP.header(req, "Authorization", "")
+        startswith(auth, "Bearer ") && (provided = auth[(length("Bearer ") + 1):end])
+    end
+    return _constant_time_eq(provided, API_KEY[])
+end
+
+# Try to claim a solve slot. Always tracks in-flight (for the gauge); rejects only when
+# a positive limit is exceeded. Returns true if admitted; the caller must `_release!()`.
+function _admit!()
+    prev = Threads.atomic_add!(ADMISSION.active, 1)
+    if ADMISSION.limit > 0 && prev >= ADMISSION.limit
+        Threads.atomic_sub!(ADMISSION.active, 1)
+        return false
+    end
+    return true
+end
+_release!() = Threads.atomic_sub!(ADMISSION.active, 1)
+
+# ---------------------------------------------------------------------------
 # JSON helpers
 # ---------------------------------------------------------------------------
 # Convert parsed JSON3 values into plain Julia containers so the core
@@ -244,8 +301,19 @@ end
     health_handler(::HTTP.Request)
 
 Liveness probe for `GET /health`; returns `ok` plus the registered problem names.
+Always succeeds once the process is up — use `GET /ready` for readiness.
 """
 health_handler(::HTTP.Request) = Dict("status" => "ok", "problems" => JuLS.available_problems())
+
+"""
+    ready_handler(::HTTP.Request)
+
+Readiness probe for `GET /ready`: 200 once warmup is complete and the server is ready
+to take `/solve` traffic, otherwise 503. Lets an orchestrator (ECS/Kubernetes) hold
+traffic until the solver is warm.
+"""
+ready_handler(::HTTP.Request) =
+    READY[] ? json_response(Dict("status" => "ready")) : json_response(Dict("status" => "starting"), 503)
 
 """
     problems_handler(::HTTP.Request)
@@ -266,37 +334,56 @@ end
     solve_handler(req::HTTP.Request)
 
 Handles `POST /solve`: decodes the JSON body, builds the experiment, runs the
-solver, and returns the comprehensive solution summary. Malformed input yields
-HTTP 400; an oversized body 413; and an unexpected solver failure 500 (details
-logged, not returned). A solve that hits the wall-clock budget still returns 200
-with the best solution found and `metrics.time_budget_exceeded = true`. Error
-responses echo the request `id` when one was supplied.
+solver, and returns the comprehensive solution summary. Yields HTTP 401 when an
+API key is required and missing/invalid; 429 when the server is at its concurrency
+limit (with `Retry-After`); 400 for malformed input; 413 for an oversized body; and
+500 for an unexpected solver failure (details logged, not returned). A solve that
+hits the wall-clock budget still returns 200 with the best solution found and
+`metrics.time_budget_exceeded = true`. Error responses echo the request `id` when
+one was supplied.
 """
+# Records one finished request (metrics + structured log) and returns its response.
+# Single instrumentation site for every `/solve` exit path.
+function _finalize(t0::Float64, resp::HTTP.Response, problem, outcome::AbstractString, id, logfields)
+    duration = time() - t0
+    record_request!(_metric_problem(problem), outcome, duration)
+    level = resp.status >= 500 ? "error" : resp.status >= 400 ? "warn" : "info"
+    log_json(
+        level,
+        "solve";
+        id = id,
+        problem = problem,
+        outcome = outcome,
+        status = resp.status,
+        duration_seconds = round(duration; digits = 6),
+        logfields...,
+    )
+    return resp
+end
+
 function solve_handler(req::HTTP.Request; instrument::Bool = true)
-    instrument && inc_in_flight!()
+    # Warmup path: run the solve to compile it, skipping auth/admission/instrumentation.
+    instrument || return _solve(req).resp
+
     t0 = time()
+    if !_authorized(req)
+        return _finalize(t0, error_response(401, "missing or invalid API key"), "unknown", "unauthorized", nothing, (;))
+    end
+    if !_admit!()
+        resp = HTTP.Response(
+            429,
+            ["Content-Type" => "application/json", "Retry-After" => "1"];
+            body = JSON3.write(Dict("error" => "server at capacity ($(ADMISSION.limit) concurrent solves); retry shortly")),
+        )
+        return _finalize(t0, resp, "unknown", "rejected", nothing, (;))
+    end
     local r
     try
         r = _solve(req)
     finally
-        instrument && dec_in_flight!()
+        _release!()
     end
-    if instrument
-        duration = time() - t0
-        record_request!(_metric_problem(r.problem), r.outcome, duration)
-        level = r.resp.status >= 500 ? "error" : r.resp.status >= 400 ? "warn" : "info"
-        log_json(
-            level,
-            "solve";
-            id = r.id,
-            problem = r.problem,
-            outcome = r.outcome,
-            status = r.resp.status,
-            duration_seconds = round(duration; digits = 6),
-            r.log...,
-        )
-    end
-    return r.resp
+    return _finalize(t0, r.resp, r.problem, r.outcome, r.id, r.log)
 end
 
 # Inner handler: validates and solves, returning a NamedTuple
@@ -369,8 +456,11 @@ end
 
 Serves `GET /metrics` in the Prometheus text exposition format.
 """
-metrics_handler(::HTTP.Request) =
-    HTTP.Response(200, ["Content-Type" => "text/plain; version=0.0.4; charset=utf-8"]; body = render_metrics())
+metrics_handler(::HTTP.Request) = HTTP.Response(
+    200,
+    ["Content-Type" => "text/plain; version=0.0.4; charset=utf-8"];
+    body = render_metrics(ADMISSION.active[]),
+)
 
 # ---------------------------------------------------------------------------
 # Warmup
@@ -435,6 +525,7 @@ function start_server(;
     kwargs...,
 )
     Oxygen.get(health_handler, "/health")
+    Oxygen.get(ready_handler, "/ready")
     Oxygen.get(problems_handler, "/problems")
     Oxygen.get(metrics_handler, "/metrics")
     Oxygen.post(solve_handler, "/solve")
@@ -443,8 +534,10 @@ function start_server(;
         @info "warming up solver"
         warmup()
         reset_metrics!()  # discard warmup solves so metrics start clean
-        @info "warmup complete; serving" host port parallel threads = Threads.nthreads()
+        @info "warmup complete; serving" host port parallel threads = Threads.nthreads() auth =
+            !isempty(API_KEY[]) max_concurrent = ADMISSION.limit
     end
+    READY[] = true  # ready to serve (warmup, if any, has completed)
 
     serve_fn = parallel ? Oxygen.serveparallel : Oxygen.serve
     serve_fn(; host = host, port = port, kwargs...)
@@ -518,7 +611,7 @@ end
     post(JSON3.write(Dict("problem" => "knapsack", "data" => Dict("capacity" => 5))))  # invalid_request
     post(repeat("a", App.MAX_BODY_BYTES + 1))                          # payload_too_large
 
-    text = App.render_metrics()
+    text = App.render_metrics(App.ADMISSION.active[])
     @test occursin("juls_requests_total{problem=\"knapsack\",outcome=\"success\"} 1", text)
     @test occursin("juls_requests_total{problem=\"knapsack\",outcome=\"invalid_request\"} 1", text)
     # an oversized/garbage body must not create an arbitrary problem label
@@ -531,6 +624,47 @@ end
     resp = App.metrics_handler(HTTP.Request("GET", "/metrics"))
     @test resp.status == 200
     @test any(h -> h[1] == "Content-Type" && occursin("text/plain", h[2]), resp.headers)
+end
+
+@testitem "auth, admission control, and readiness" begin
+    using JSON3, HTTP
+    include(joinpath(pkgdir(JuLS), "server", "app.jl"))  # fresh App module: defaults restored
+    payload = JSON3.write(
+        Dict(
+            "problem" => "knapsack",
+            "data" => Dict("capacity" => 5, "values" => [3, 4, 2], "weights" => [2, 3, 1]),
+            "solve" => Dict("limit" => 20, "seed" => 0),
+        ),
+    )
+    post(headers = Pair{String,String}[]) =
+        App.solve_handler(HTTP.Request("POST", "/solve", headers, Vector{UInt8}(payload)))
+
+    # Readiness flips from 503 to 200
+    @test App.ready_handler(HTTP.Request("GET", "/ready")).status == 503
+    App.READY[] = true
+    @test App.ready_handler(HTTP.Request("GET", "/ready")).status == 200
+
+    # Auth: disabled by default; enforced once a key is set; accepted two ways
+    @test post().status == 200
+    App.API_KEY[] = "s3cret"
+    @test post().status == 401
+    @test post(["X-API-Key" => "wrong"]).status == 401
+    @test post(["X-API-Key" => "s3cret"]).status == 200
+    @test post(["Authorization" => "Bearer s3cret"]).status == 200
+    App.API_KEY[] = ""
+
+    # Admission: at capacity -> 429 with Retry-After; frees up after release
+    App.ADMISSION.limit = 1
+    Threads.atomic_add!(App.ADMISSION.active, 1)  # simulate one in-flight solve
+    rejected = post()
+    @test rejected.status == 429
+    @test HTTP.header(rejected, "Retry-After") == "1"
+    @test JSON3.read(rejected.body).error isa AbstractString
+    Threads.atomic_sub!(App.ADMISSION.active, 1)
+    @test post().status == 200
+
+    # Rejections are counted under a bounded label
+    @test occursin("juls_requests_total{problem=\"unknown\",outcome=\"rejected\"} 1", App.render_metrics(0))
 end
 
 end # module JuLSServer
