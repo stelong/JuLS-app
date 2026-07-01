@@ -92,6 +92,12 @@ async def main():
 asyncio.run(main())
 ```
 
+If a batch exceeds the server's concurrency cap (`JULS_MAX_CONCURRENT`, default `4 ×
+threads`), the extra requests get HTTP `429`. Both clients **retry `429` automatically**
+with backoff (honoring the server's `Retry-After`), so `solve_many` just works — the
+throughput is simply bounded by the cap. Tune with `JuLSClient(..., max_retries=…)`
+(`0` to disable and surface the `429` as a `JuLSError`).
+
 ## Async jobs
 
 For long or variable-duration solves, submit a job and poll instead of blocking. The

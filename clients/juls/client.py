@@ -23,6 +23,8 @@ DEFAULT_BASE_URL = "http://localhost:8080"
 DEFAULT_TIMEOUT = 120.0
 DEFAULT_POLL_INTERVAL = 0.5
 DEFAULT_POLL_TIMEOUT = 600.0
+DEFAULT_MAX_RETRIES = 5
+_RETRY_BACKOFF = 0.25  # initial backoff (s) when the server sends no Retry-After
 
 #: Job states in which no further change will occur.
 TERMINAL_STATES = frozenset({"succeeded", "failed", "timed_out"})
@@ -30,6 +32,17 @@ TERMINAL_STATES = frozenset({"succeeded", "failed", "timed_out"})
 
 class JuLSError(RuntimeError):
     """Raised when the server returns a non-2xx response."""
+
+
+def _retry_after(resp: httpx.Response, fallback: float) -> float:
+    """Seconds to wait before retrying a 429, from the `Retry-After` header if present."""
+    value = resp.headers.get("Retry-After")
+    if value is None:
+        return fallback
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        return fallback
 
 
 def _unwrap(resp: httpx.Response) -> dict[str, Any]:
@@ -69,8 +82,10 @@ class JuLSClient:
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = DEFAULT_TIMEOUT,
         api_key: str | None = None,
+        max_retries: int = DEFAULT_MAX_RETRIES,
     ):
         self._client = httpx.Client(base_url=base_url, timeout=timeout, headers=_headers(api_key))
+        self._max_retries = max_retries
 
     def __enter__(self) -> "JuLSClient":
         return self
@@ -108,8 +123,20 @@ class JuLSClient:
         This call blocks until the solve finishes and returns the result. `id` is an
         optional correlation label — echoed back and included in the server logs for
         tracing; it is not needed to retrieve results (use `/jobs` for async polling).
+
+        Transparently retries on HTTP 429 (server at its concurrency cap), honoring
+        `Retry-After`, up to the client's `max_retries`.
         """
-        return _unwrap(self._client.post("/solve", json=_payload(problem, data, solve_opts, id)))
+        payload = _payload(problem, data, solve_opts, id)
+        backoff = _RETRY_BACKOFF
+        for attempt in range(self._max_retries + 1):
+            resp = self._client.post("/solve", json=payload)
+            if resp.status_code == 429 and attempt < self._max_retries:
+                time.sleep(_retry_after(resp, backoff))
+                backoff = min(backoff * 2, 5.0)
+                continue
+            return _unwrap(resp)
+        return _unwrap(resp)  # retries exhausted: raise the last 429
 
     # -- asynchronous jobs -----------------------------------------------------
     def submit_job(self, problem: str, data: dict, *, id: Any = None, **solve_opts: Any) -> dict:
@@ -157,8 +184,10 @@ class AsyncJuLSClient:
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = DEFAULT_TIMEOUT,
         api_key: str | None = None,
+        max_retries: int = DEFAULT_MAX_RETRIES,
     ):
         self._client = httpx.AsyncClient(base_url=base_url, timeout=timeout, headers=_headers(api_key))
+        self._max_retries = max_retries
 
     async def __aenter__(self) -> "AsyncJuLSClient":
         return self
@@ -188,7 +217,17 @@ class AsyncJuLSClient:
 
     # -- synchronous solve -----------------------------------------------------
     async def solve(self, problem: str, data: dict, *, id: Any = None, **solve_opts: Any) -> dict:
-        return _unwrap(await self._client.post("/solve", json=_payload(problem, data, solve_opts, id)))
+        """Solve one request; retries on HTTP 429 honoring `Retry-After` (see `JuLSClient.solve`)."""
+        payload = _payload(problem, data, solve_opts, id)
+        backoff = _RETRY_BACKOFF
+        for attempt in range(self._max_retries + 1):
+            resp = await self._client.post("/solve", json=payload)
+            if resp.status_code == 429 and attempt < self._max_retries:
+                await asyncio.sleep(_retry_after(resp, backoff))
+                backoff = min(backoff * 2, 5.0)
+                continue
+            return _unwrap(resp)
+        return _unwrap(resp)  # retries exhausted: raise the last 429
 
     async def solve_many(self, requests: Iterable[dict]) -> list[dict]:
         """Solve many requests at once. Each item is {"problem", "data", "id"?, "solve"?}.
