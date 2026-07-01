@@ -43,7 +43,7 @@ curl -X POST http://localhost:8080/solve \
 
 Built-in problems: `knapsack`, `tsp`, `graph_coloring`, `ticket_pricing`, `production_planning`.
 
-> **No API key needed by default.** Auth and the concurrency cap are opt-in (see _Auth & backpressure_ under [Build your own image](#build-your-own-image)) — out of the box the server is open, so the calls above work as-is for local trials. Set `JULS_API_KEY` only when you want to lock it down.
+> **No API key needed by default.** Auth and the concurrency cap are opt-in (see [Configuration](#configuration)) — out of the box the server is open, so the calls above work as-is for local trials. Set `JULS_API_KEY` only when you want to lock it down.
 
 ---
 
@@ -216,33 +216,43 @@ docker build -t <your-user>/juls-app .
 docker run --rm -p 8080:8080 <your-user>/juls-app
 ```
 
-The [`Dockerfile`](Dockerfile) is multi-stage: instantiate + precompile → build a PackageCompiler **sysimage** (so there's no first-request JIT latency) → slim runtime. On startup the server runs a warmup solve per problem before accepting traffic, and serves requests across threads (`JULIA_NUM_THREADS=auto`). Runtime is configurable via `HOST`, `PORT`, `PARALLEL`, `WARMUP`.
+The [`Dockerfile`](Dockerfile) is multi-stage: instantiate + precompile → build a PackageCompiler **sysimage** (so there's no first-request JIT latency) → slim runtime. On startup the server runs a warmup solve per problem before accepting traffic, then serves requests across threads.
 
-**Request limits.** Each `/solve` request is bounded so a single caller can't exhaust the server. Over-budget requests are rejected up front (`400` for an out-of-range limit, `413` for an oversized body). A solve that reaches the wall-clock budget stops cooperatively and still returns `200` with the best solution found so far and `metrics.time_budget_exceeded = true`. All limits are tunable via environment variables:
+### Configuration
 
-| Variable | Default | Meaning |
+All runtime settings are environment variables (with their defaults below). Pass them to `docker run` with `-e NAME=value`, or an `--env-file`:
+
+| Variable | Default | Effect |
 | --- | --- | --- |
-| `JULS_MAX_BODY_BYTES` | `1000000` | Largest accepted request body (bytes) |
-| `JULS_MAX_ITERATIONS` | `100000` | Cap on a request's iteration budget |
-| `JULS_MAX_SOLVE_SECONDS` | `60.0` | Wall-clock ceiling on a single solve |
+| `HOST` | `0.0.0.0` | Bind address. |
+| `PORT` | `8080` | Listen port — must match your `-p` mapping. |
+| `PARALLEL` | `true` | Multi-threaded serve. |
+| `WARMUP` | `true` | Warm the solver before serving (`/ready` stays `503` until done). |
+| `JULIA_NUM_THREADS` | `auto` | Thread pool; also the basis for the two `*_CONCURRENCY` defaults. |
+| `JULS_MAX_BODY_BYTES` | `1000000` | Largest accepted request body; over → `413`. |
+| `JULS_MAX_ITERATIONS` | `100000` | Iteration-budget cap; over → `400`. |
+| `JULS_MAX_SOLVE_SECONDS` | `60.0` | Wall-clock ceiling. On hit, returns `200` with best-so-far and `metrics.time_budget_exceeded = true` (enforced cooperatively inside the solver loop, so it never abandons work). |
+| `JULS_API_KEY` | _(unset)_ | When set, `/solve` and `/jobs` require it via `X-API-Key: <key>` or `Authorization: Bearer <key>` (else `401`). Probes/metrics (`/health`, `/ready`, `/metrics`, `/problems`) stay open. |
+| `JULS_MAX_CONCURRENT` | `4 × threads` | Max concurrent `/solve`; excess → `429` with `Retry-After` (the Python client auto-retries). `0` disables the cap. |
+| `JULS_RUN_WORKER` | `true` | Run the in-process async-job workers (all-in-one). Set `false` on the API in a split API/worker deployment. |
+| `JULS_WORKER_CONCURRENCY` | `threads` | Number of worker tasks draining the `/jobs` queue. |
 
-The time ceiling is enforced inside the solver loop (checked between iterations), so it bounds total run time regardless of the chosen `limit` without abandoning work.
+```bash
+docker run --rm --pull=always -p 8080:8080 \
+  -e JULS_API_KEY=s3cret \
+  -e JULS_MAX_CONCURRENT=16 \
+  -e JULS_MAX_SOLVE_SECONDS=120 \
+  steplong/juls-app:latest
 
-**Auth & backpressure.** `POST /solve` can require an API key and caps how many solves run at once:
+# ...or from a file (NAME=value per line, no quotes, no `export`):
+docker run --rm -p 8080:8080 --env-file juls.env steplong/juls-app:latest
+```
 
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `JULS_API_KEY` | _(unset)_ | When set, `/solve` and `/jobs` require it via `X-API-Key: <key>` or `Authorization: Bearer <key>` (else `401`). Unset disables auth. |
-| `JULS_MAX_CONCURRENT` | `4 × threads` | Max concurrent `/solve` requests; excess returns `429` with `Retry-After`. `0` disables the cap. |
+Two gotchas:
+- **`PORT` must match `-p`.** `-p` is `host:container`; if you set `-e PORT=9000`, publish `-p 9000:9000`. Colima forwards published ports to your host just like Docker Desktop.
+- **Threads drive the concurrency defaults.** `JULS_MAX_CONCURRENT` and `JULS_WORKER_CONCURRENCY` derive from `JULIA_NUM_THREADS`, so on a small colima VM the cap can be low (e.g. 2 threads → cap 8). Set them explicitly for a predictable cap.
 
-Probes and scrapes (`/health`, `/ready`, `/metrics`, `/problems`) are never authenticated.
-
-**Async workers.** The `/jobs` endpoint is served by in-process workers (Phase 1, all-in-one):
-
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `JULS_RUN_WORKER` | `true` | Run in-process job workers. Set `false` on the API in a split API/worker deployment. |
-| `JULS_WORKER_CONCURRENCY` | `threads` | Number of worker tasks draining the queue. |
+The startup log echoes the effective `auth`, `max_concurrent`, and worker count.
 
 **Observability.** Every `/solve` request emits one structured JSON log line to stdout (`id`, `problem`, `outcome`, `status`, `duration_seconds`, and solve fields) for log pipelines to parse, and updates the Prometheus metrics at `GET /metrics`:
 
