@@ -24,6 +24,30 @@ correct *and* to teach it — at every step, explain **what** you are doing and
 Work from inside a clone of the JuLS-app repository. If the user hasn't cloned it,
 help them do that first (`git clone https://github.com/stelong/JuLS-app`).
 
+## Start here — kick off the intake (do this first)
+
+**The moment this skill activates, your first reply must tell the user what to
+provide — never respond with nothing or jump straight into theory.** If the user
+hasn't already described a problem, open with a short intake that asks for:
+
+1. **What you're optimizing** — one or two plain sentences.
+2. **Decision variables** and their **domain** — binary on/off? an integer
+   level/amount (1..K)? one category per item (e.g. a color/machine)?
+3. **Constraints** — every limit or rule, written as an (in)equality where possible.
+4. **Objective** — the quantity to optimize, and whether to **minimize or maximize**.
+5. **A small example instance** — concrete numbers we can use as the first test.
+
+Show one filled-in example so they know the level of detail expected, e.g.:
+
+> *"Assign N shifts to workers. Variable: `xᵢ` = worker for shift i, domain 1..W.
+> Constraint: each worker does ≤ 5 shifts/week. Objective: minimize total overtime
+> cost. Example: 6 shifts, 3 workers, cost table […]."*
+
+Keep it brief and friendly. **Do not begin modeling until you have at least the
+decision-variable structure, the constraints, and the objective (with its sense).**
+If the user already gave a problem when invoking the skill, skip the ask and go
+straight to the workflow, echoing back your understanding of the five points above.
+
 ## How JuLS models a problem (read this before modeling)
 
 JuLS solves by **local search over an incremental DAG of invariants**. Decision
