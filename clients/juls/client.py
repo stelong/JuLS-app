@@ -105,8 +105,9 @@ class JuLSClient:
     def solve(self, problem: str, data: dict, *, id: Any = None, **solve_opts: Any) -> dict:
         """Solve `problem` with `data`; keyword args (limit, using_cp, seed) form `solve`.
 
-        Pass `id` to have the server echo it back in the response, so results can be
-        matched to requests when several are in flight.
+        This call blocks until the solve finishes and returns the result. `id` is an
+        optional correlation label — echoed back and included in the server logs for
+        tracing; it is not needed to retrieve results (use `/jobs` for async polling).
         """
         return _unwrap(self._client.post("/solve", json=_payload(problem, data, solve_opts, id)))
 
@@ -192,9 +193,10 @@ class AsyncJuLSClient:
     async def solve_many(self, requests: Iterable[dict]) -> list[dict]:
         """Solve many requests at once. Each item is {"problem", "data", "id"?, "solve"?}.
 
-        Pass an `id` per request to match each response to its request — `solve_many`
-        preserves input order, but an explicit id lets callers join results that arrive
-        out of order through other paths.
+        This is *client-side* concurrency over the synchronous `/solve` (each request
+        still blocks server-side until done) — good for many short solves. Results are
+        returned in input order; the optional per-request `id` is just a correlation
+        label. For long solves that shouldn't hold a connection open, use `/jobs`.
         """
 
         async def _one(req: dict) -> dict:

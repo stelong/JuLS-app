@@ -59,13 +59,15 @@ Built-in problems: `knapsack`, `tsp`, `graph_coloring`, `ticket_pricing`, `produ
 | `POST` | `/jobs`     | Submit a solve asynchronously; returns a job id (`202`). |
 | `GET`  | `/jobs/{id}`| Poll an async job's status and result. |
 
+**Which one?** `/solve` blocks until the solve finishes and returns the result on the same response — best for quick solves (you can still fire many *concurrently* from the client; see [Concurrency](clients/README.md)). `/jobs` returns immediately and you poll for the result — use it for long or variable-duration solves that would otherwise hold a connection open (and trip HTTP/load-balancer timeouts). Same solver underneath; only the delivery differs.
+
 **Request body** for `POST /solve`:
 
 ```jsonc
 {
   "problem": "knapsack",          // a registered problem name
   "data":    { ... },             // problem-specific fields (see GET /problems)
-  "id":      "my-run-1",          // optional; echoed back verbatim (string or number)
+  "id":      "my-run-1",          // optional correlation id: echoed back + logged for tracing
   "solve":   {                    // optional
     "limit":    200,              // int (iterations) | "auto" | {"time": 5} | {"stagnation": 20, "max_iterations": 1000}
     "using_cp": true,             // filter moves with CP (default true)
@@ -74,9 +76,11 @@ Built-in problems: `knapsack`, `tsp`, `graph_coloring`, `ticket_pricing`, `produ
 }
 ```
 
-The optional `id` is returned unchanged in the response, so when you fire many
-solves concurrently you can match each result back to its request regardless of
-the order they complete in. If you omit it, the server generates a UUID.
+The optional `id` is a **correlation label**, not a handle you need to fetch results:
+`/solve` is synchronous, so the response you get back *is* your result. The `id` is
+echoed unchanged and included in the server's structured logs, which is handy for
+tracing a specific run. If you omit it, the server generates a UUID. (For the async
+`/jobs` flow below, this same field instead becomes the `job_id` you poll with.)
 
 **Response** (abridged):
 
@@ -103,7 +107,7 @@ The objective is always **minimized** (e.g. knapsack returns `-15.0` for a maxim
 
 ### Async jobs
 
-For long or variable-duration solves, submit asynchronously instead of blocking on `/solve`. The request body is identical to `/solve` and is validated up front (so bad input still fails fast with `400`/`413`); the call returns immediately with a job id you poll.
+For long or variable-duration solves, submit asynchronously instead of blocking on `/solve`. The request body is identical to `/solve` and is validated up front (so bad input still fails fast with `400`/`413`); the call returns immediately with a job id you poll. Here the optional `id` field **becomes the `job_id`** (supply your own as an idempotency key, or the server generates a UUID) — unlike `/solve`, where `id` is just a correlation label.
 
 ```bash
 # submit -> 202
