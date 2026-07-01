@@ -1,0 +1,44 @@
+# Copyright (c) {{YEAR}} {{AUTHOR}}
+# SPDX-License-Identifier: Apache-2.0
+#
+# Template — the invariant DAG for {{Problem}}. Save as
+# src/experiments/{{problem}}/{{problem}}_dag.jl. Modeled on
+# src/experiments/knapsack/knapsack_dag.jl. See reference/invariant-catalog.md and
+# reference/modeling-patterns.md for how to choose the invariants below.
+
+"""
+    create_{{problem}}_dag(e::{{Problem}}Experiment)
+
+Builds the DAG: variables → per-element cost/constraint invariants → objective and
+penalized constraints → a final AggregatorInvariant root.
+"""
+function create_{{problem}}_dag(e::{{Problem}}Experiment)
+    n = e.n
+    dag = DAG(n)                                  # n decision-variable roots (1..n)
+
+    # --- Objective terms: one node per variable, parented to the variable root. ---
+    # Example (linear objective, maximize -> negate):
+    cost_nodes = Int[
+        add_invariant!(dag, ScaleInvariant(-e.{{value}}[i]); variable_parent_indexes = [i]) for i = 1:n
+    ]
+    obj_node = add_invariant!(dag, ObjectiveInvariant(); name = "objective_value", invariant_parent_indexes = cost_nodes)
+
+    # --- Constraint: measure violation, then penalize it. ---
+    # Example (capacity: sum of weights <= C):
+    weight_nodes = Int[
+        add_invariant!(dag, ScaleInvariant(e.{{weight}}[i]); variable_parent_indexes = [i], using_cp = true) for i = 1:n
+    ]
+    capacity_node = add_invariant!(
+        dag,
+        ComparatorInvariant(e.{{capacity}});
+        name = "constraint_violation",
+        invariant_parent_indexes = weight_nodes,
+        using_cp = true,
+    )
+    constraint_node = add_invariant!(dag, StaticConstraintInvariant(e.α); invariant_parent_indexes = [capacity_node])
+
+    # --- Root: combine objective with all penalty nodes. ---
+    add_invariant!(dag, AggregatorInvariant(); invariant_parent_indexes = [constraint_node, obj_node])
+
+    return dag
+end

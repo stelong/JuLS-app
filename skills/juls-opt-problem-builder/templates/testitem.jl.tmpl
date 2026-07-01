@@ -1,0 +1,26 @@
+# Template — a @testitem for {{problem}}. Paste into src/experiments/{{problem}}/{{problem}}.jl
+# (testitems live inline in the source, next to what they test). Run with:
+#   julia --project=. -e 'using Pkg; Pkg.test()'
+
+@testitem "{{problem}}: sample loads, builds, and improves" begin
+    # build straight from the bundled sample (data/{{problem}}/easy.json)
+    e = JuLS.load_sample("{{problem}}", "easy")
+    @test JuLS.n_decision_variables(e) >= 1
+
+    model = JuLS.init_model(e)
+    JuLS.optimize!(model; limit = JuLS.IterationLimit(50), rng = Random.MersenneTwister(0))
+
+    # the solver ran and produced a solution
+    @test model.run_metrics.current_iteration > 1
+    # if a feasible instance, expect a feasible best solution:
+    # @test !isnothing(model.best_solution)
+end
+
+@testitem "{{problem}}: from_data validates input" begin
+    # a well-formed payload builds
+    e = JuLS.build_experiment("{{problem}}", Dict{String,Any}({{"field" => ...}}))
+    @test e isa JuLS.{{Problem}}Experiment
+
+    # a malformed payload is rejected
+    @test_throws JuLS.InvalidInputError JuLS.build_experiment("{{problem}}", Dict{String,Any}())
+end

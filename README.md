@@ -143,6 +143,8 @@ plot_solution(data, res).savefig("knapsack.png", dpi=150)
 
 ## Register a new optimization problem
 
+> **Guided path:** the [`juls-opt-problem-builder`](skills/juls-opt-problem-builder/SKILL.md) Agent Skill walks you (in Claude Code, Cursor, Codex, etc.) through the steps below — translating your objective and constraints into the invariant DAG, registering the problem, adding a sample/test, building the image, and verifying it from Python — explaining each modeling choice. Install with `npx skills add stelong/JuLS-app` (see [`skills/`](skills/)).
+
 A problem is a Julia `Experiment` type plus a data-loading contract, registered by name. To add one (use the existing experiments under [`src/experiments/`](src/experiments/) as templates):
 
 1. **Define the experiment** and the core interface — `n_decision_variables`, `decision_type`, `generate_domains`, and `create_dag` (the DAG of invariants encoding objective + constraints). Optionally provide custom `init` / `neigh` / `pick` heuristics; defaults are used otherwise. See [`src/experiments/experiments.jl`](src/experiments/experiments.jl).

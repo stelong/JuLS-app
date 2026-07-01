@@ -1,0 +1,62 @@
+# Copyright (c) {{YEAR}} {{AUTHOR}}
+# SPDX-License-Identifier: Apache-2.0
+#
+# Template — fill every {{PLACEHOLDER}} and delete this header comment.
+# Save as src/experiments/{{problem}}/{{problem}}.jl and register it (see
+# reference/registration-checklist.md). Modeled on src/experiments/knapsack/knapsack.jl.
+
+"""
+    {{Problem}}Experiment <: Experiment
+
+{{one-line description of the problem}}.
+
+# Fields
+{{- one bullet per field, e.g. `capacity::Int`: ... }}
+"""
+struct {{Problem}}Experiment <: Experiment
+    α::Float64                       # constraint-violation penalty
+    n::Int                           # number of decision variables
+    {{field::Type}}                  # ... instance data (weights, costs, ...)
+end
+
+n_decision_variables(e::{{Problem}}Experiment) = e.n
+
+# BinaryDecisionValue for on/off selection, IntDecisionValue for integer levels.
+decision_type(::{{Problem}}Experiment) = {{BinaryDecisionValue | IntDecisionValue}}
+
+# One domain vector per variable; raw element type must match decision_type
+# (Bool for Binary, Int for Int). E.g. binary: [[false, true] for _ in 1:e.n]
+#                                    integer 1..K: [collect(1:{{K}}) for _ in 1:e.n]
+generate_domains(e::{{Problem}}Experiment) = {{[[false, true] for _ = 1:e.n]}}
+
+"""
+    from_data(::Type{{{Problem}}Experiment}, data)
+
+Builds the experiment from a decoded payload. Validate with the coercion helpers
+(as_integer, as_number, as_integer_array, as_number_array, as_coordinate_array,
+as_edge_array) and throw InvalidInputError on anything malformed.
+"""
+function from_data(::Type{{{Problem}}Experiment}, data::AbstractDict)
+    {{field}} = {{as_integer_array(data, "field")}}
+    # ... parse + cross-field validation, e.g.:
+    # isempty({{field}}) && throw(InvalidInputError("'{{field}}' must be non-empty"))
+    α = as_number(data, "penalty", DEFAULT_PENALTY_PARAM)
+    return {{Problem}}Experiment(α, {{length(field)}}, {{field}})
+end
+
+data_schema(::Type{{{Problem}}Experiment}) = [
+    FieldSpec("{{field}}", :{{integer_array}}, true, "{{what it is}}"),
+    FieldSpec("penalty", :number, false, "Constraint-violation penalty α (default $(DEFAULT_PENALTY_PARAM))"),
+]
+
+# Starting solution (raw values, length n). Simplest valid assignment.
+(::SimpleInitialization)(e::{{Problem}}Experiment) = {{[false for _ = 1:e.n]}}
+
+include("{{problem}}_dag.jl")
+
+create_dag(e::{{Problem}}Experiment) = create_{{problem}}_dag(e)
+
+# Optional: override defaults from src/experiments/experiments.jl if needed.
+# default_init(::{{Problem}}Experiment) = SimpleInitialization()
+# default_neigh(e::{{Problem}}Experiment) = ExhaustiveNeighbourhood(2, e.n)
+# default_using_cp(::{{Problem}}Experiment) = true
